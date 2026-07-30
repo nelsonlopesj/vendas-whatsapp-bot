@@ -3,11 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
-// Config global da Evolution (servidor, não visível ao cliente)
-const EVOLUTION_URL =
-  process.env.EVOLUTION_API_URL || "http://evolution:8080";
-const EVOLUTION_API_KEY =
-  process.env.EVOLUTION_API_KEY || "ezflow-master-key";
+const WA_URL = process.env.EZFLOW_WA_URL || "http://evolution:8080";
+const WA_KEY = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -22,67 +19,58 @@ export async function GET() {
   }
 
   try {
-    // Cada tenant tem sua própria instância na Evolution API
     const instance = `tenant-${tenant.slug}`;
-    const baseUrl = EVOLUTION_URL.replace(/\/$/, "");
+    const baseUrl = WA_URL.replace(/\/$/, "");
 
-    // 1. Criar instância (idempotente)
+    // Criar instância (idempotente)
     await fetch(`${baseUrl}/instance/create`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: EVOLUTION_API_KEY,
-      },
+      headers: { "Content-Type": "application/json", apikey: WA_KEY },
       body: JSON.stringify({
         instanceName: instance,
-        token: EVOLUTION_API_KEY,
+        token: WA_KEY,
         qrcode: true,
         integration: "WHATSAPP-BAILEYS",
       }),
     });
 
-    // 2. Verificar se já está conectado
+    // Verificar se já está conectado
     const statusRes = await fetch(
       `${baseUrl}/instance/connectionState/${instance}`,
-      { headers: { apikey: EVOLUTION_API_KEY } }
+      { headers: { apikey: WA_KEY } }
     );
     const statusData = await statusRes.json();
 
     if (statusData?.instance?.state === "open") {
-      return NextResponse.json({
-        connected: true,
-        state: "open",
-        qrcode: null,
-      });
+      return NextResponse.json({ connected: true, state: "open", qrcode: null });
     }
 
-    // 3. Buscar QR Code
-    const qrRes = await fetch(
-      `${baseUrl}/instance/connect/${instance}`,
-      { headers: { apikey: EVOLUTION_API_KEY } }
-    );
+    // Buscar QR Code
+    const qrRes = await fetch(`${baseUrl}/instance/connect/${instance}`, {
+      headers: { apikey: WA_KEY },
+    });
 
     if (!qrRes.ok) {
       return NextResponse.json({
         connected: false,
         state: statusData?.instance?.state || "disconnected",
         qrcode: null,
-        error: `Status: ${qrRes.status}. Tente novamente.`,
+        error: "Não foi possível gerar o QR Code. Tente novamente.",
       });
     }
 
     const qrData = await qrRes.json();
+    // Evolution retorna base64 com prefixo "data:image/png;base64,..."
+    const raw = qrData?.base64 || qrData?.qrcode || qrData?.qr_code || null;
+    // Remove prefixo duplicado se já vier com data URI
+    const qrcode = raw ? raw.replace(/^data:image\/\w+;base64,/, "") : null;
 
-    return NextResponse.json({
-      connected: false,
-      state: "qrcode",
-      qrcode: qrData?.base64 || qrData?.qrcode || qrData?.qr_code || null,
-    });
+    return NextResponse.json({ connected: false, state: "qrcode", qrcode });
   } catch (error: any) {
-    console.error("QR Code error:", error.message);
+    console.error("WA connect error:", error.message);
     return NextResponse.json(
-      { error: "Evolution API indisponível. O serviço está iniciando..." },
-      { status: 200 } // 200 pra não quebrar o frontend
+      { error: "Serviço de conexão indisponível. Tente novamente em instantes." },
+      { status: 200 }
     );
   }
 }
