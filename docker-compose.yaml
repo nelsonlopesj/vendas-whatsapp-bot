@@ -65,8 +65,8 @@ services:
       WEBHOOK_GLOBAL_ENABLED: "true"
       WEBHOOK_GLOBAL_URL: http://portal:3000/api/webhooks/evolution
       WEBHOOK_GLOBAL_EVENTS: MESSAGES_UPSERT
-      REDIS_ENABLED: "false"
-      REDIS_DISABLED: "true"
+      REDIS_ENABLED: "true"
+      REDIS_URI: redis://redis:6379
     ports:
       - "8181:8080"
     volumes:
@@ -74,6 +74,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - ezflow-net
 
