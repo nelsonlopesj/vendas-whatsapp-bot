@@ -84,7 +84,7 @@ services:
       REDIS_URI: ${REDIS_URL}
       LOG_LEVEL: WARN
     ports:
-      - "8081:8080"
+      - "8181:8080"
     volumes:
       - evolution-files:/app/files
     depends_on:
