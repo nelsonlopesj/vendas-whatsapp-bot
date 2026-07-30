@@ -63,7 +63,7 @@ services:
       DATABASE_PROVIDER: postgresql
       DATABASE_CONNECTION_URI: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_DATABASE}?schema=evolution_api
       WEBHOOK_GLOBAL_ENABLED: "true"
-      WEBHOOK_GLOBAL_URL: ${NEXTAUTH_URL}/api/webhooks/evolution
+      WEBHOOK_GLOBAL_URL: http://portal:3000/api/webhooks/evolution
       WEBHOOK_GLOBAL_EVENTS: MESSAGES_UPSERT
     ports:
       - "8181:8080"
