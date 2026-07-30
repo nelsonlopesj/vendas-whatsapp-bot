@@ -68,7 +68,7 @@ export async function GET() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: WA_KEY },
-          body: JSON.stringify({ webhook: { enabled: true, url: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/webhooks/evolution`, events: ["MESSAGES_UPSERT"] } }),
+          body: JSON.stringify({ webhook: { enabled: true, url: `http://portal:3000/api/webhooks/evolution`, events: ["MESSAGES_UPSERT"] } }),
         },
         5000
       );
