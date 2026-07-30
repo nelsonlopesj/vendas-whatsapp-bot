@@ -6,7 +6,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: ezflow-portal
     restart: unless-stopped
     ports:
       - "3000:3000"
@@ -32,7 +31,6 @@ services:
   # ===== PostgreSQL =====
   db:
     image: postgres:16-alpine
-    container_name: ezflow-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER}
@@ -57,7 +55,6 @@ services:
   # ===== Redis =====
   redis:
     image: redis:7-alpine
-    container_name: ezflow-redis
     restart: unless-stopped
     volumes:
       - redisdata:/data
