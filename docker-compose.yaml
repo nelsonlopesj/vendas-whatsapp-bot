@@ -16,7 +16,7 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       REDIS_URL: ${REDIS_URL}
       UPLOAD_DIR: /app/public/uploads
-      EVOLUTION_API_URL: http://172.17.0.1:8181
+      EVOLUTION_API_URL: http://evolution:8080
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
     volumes:
       - uploads:/app/public/uploads
@@ -24,6 +24,8 @@ services:
       db:
         condition: service_healthy
       redis:
+        condition: service_started
+      evolution:
         condition: service_started
     networks:
       - ezflow-network
@@ -63,6 +65,24 @@ services:
     networks:
       - ezflow-network
 
+  # ===== Evolution API (WhatsApp) =====
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    environment:
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_DATABASE}?schema=evolution_api
+      WEBHOOK_GLOBAL_URL: ${NEXTAUTH_URL}/api/webhooks/evolution
+    ports:
+      - "8181:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ezflow-network
+
 volumes:
   pgdata:
   redisdata:
@@ -70,5 +90,4 @@ volumes:
 
 networks:
   ezflow-network:
-    name: ezflow-net
-    external: true
+    driver: bridge
