@@ -22,11 +22,11 @@ export async function POST(req: NextRequest) {
     // Parse do webhook
     const parsed = parseEvolutionWebhook(body);
     if (!parsed) {
-      // Não é um evento de mensagem (pode ser status, etc.)
       return NextResponse.json({ success: true, ignored: true });
     }
 
     const { phone, message, messageId, pushName, instance } = parsed;
+    console.log(`[WA-IN] ${phone}: "${message}" (${pushName || "desconhecido"})`);
 
     // Buscar tenant pela instância da Evolution
     // Assumimos que instance name == tenant slug ou fazemos mapeamento via URL

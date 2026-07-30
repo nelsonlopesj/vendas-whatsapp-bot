@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Plus,
   MessageSquare,
@@ -112,6 +113,7 @@ interface FlowEditorProps {
 }
 
 export function FlowEditor({ flowId }: FlowEditorProps) {
+  const router = useRouter();
   const [flowName, setFlowName] = useState("Novo Fluxo");
   const [triggerKeyword, setTriggerKeyword] = useState("");
   const [triggerMode, setTriggerMode] = useState("contains");
@@ -245,7 +247,8 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
     setSaving(false);
 
     if (res.ok) {
-      setMessage("Fluxo salvo com sucesso!");
+      setMessage("Fluxo salvo! Redirecionando...");
+      setTimeout(() => router.push("/dashboard/flows"), 800);
     } else {
       setMessage("Erro ao salvar. Verifique os dados.");
     }

@@ -77,6 +77,8 @@ services:
       WEBHOOK_GLOBAL_URL: ${NEXTAUTH_URL}/api/webhooks/evolution
     ports:
       - "8181:8080"
+    volumes:
+      - evolution_data:/app/evolution-files
     depends_on:
       db:
         condition: service_healthy
@@ -87,6 +89,7 @@ volumes:
   pgdata:
   redisdata:
   uploads:
+  evolution_data:
 
 networks:
   ezflow-network:
