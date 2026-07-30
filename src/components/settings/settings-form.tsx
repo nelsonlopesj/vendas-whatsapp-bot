@@ -25,7 +25,7 @@ interface SettingsFormProps {
 
 export function SettingsForm({ tenant }: SettingsFormProps) {
   const [evolutionUrl, setEvolutionUrl] = useState(
-    tenant.evolutionUrl || "http://evolution:8080"
+    tenant.evolutionUrl || "http://evolution:8081"
   );
   const [evolutionApikey, setEvolutionApikey] = useState(
     tenant.evolutionApikey || ""
