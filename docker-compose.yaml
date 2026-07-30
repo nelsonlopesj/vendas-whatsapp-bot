@@ -20,6 +20,12 @@ services:
       EZFLOW_WA_KEY: ${EVOLUTION_API_KEY}
     volumes:
       - uploads:/app/public/uploads
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     depends_on:
       db:
         condition: service_healthy
