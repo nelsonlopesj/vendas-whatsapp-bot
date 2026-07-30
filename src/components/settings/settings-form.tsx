@@ -50,6 +50,12 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
       } else if (data.qrcode) {
         setQrCode(data.qrcode);
         setWaConnected(false);
+      } else if (data.state === "starting") {
+        // Evolution iniciando — tentar de novo em 3 segundos
+        setQrError("Iniciando serviço WhatsApp...");
+        setTimeout(() => fetchQrCode(), 3000);
+        setLoadingQr(false);
+        return;
       } else if (data.error) {
         setQrError(data.error);
       }
@@ -57,7 +63,7 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
       setQrError("Erro ao conectar. Tente novamente.");
     }
     setLoadingQr(false);
-  }, []);
+  }, [fetchQrCode]);
 
   useEffect(() => {
     fetchQrCode();
