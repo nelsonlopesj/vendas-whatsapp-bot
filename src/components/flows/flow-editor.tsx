@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Plus,
   MessageSquare,
@@ -121,6 +121,32 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
   const [message, setMessage] = useState("");
 
   const selectedStep = steps.find((s) => s.id === selectedStepId);
+
+  // Carregar fluxo existente ao editar
+  useEffect(() => {
+    if (!flowId) return;
+    fetch(`/api/flows/${flowId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.flow) {
+          setFlowName(data.flow.name);
+          setTriggerKeyword(data.flow.triggerKeyword);
+          setTriggerMode(data.flow.triggerMode);
+          setSteps(
+            (data.flow.steps || []).map((s: any) => ({
+              id: s.id,
+              type: s.type,
+              label: s.label || s.type,
+              config: (s.config || {}) as Record<string, any>,
+              productId: s.productId,
+              nextStepId: s.nextStepId,
+              altNextStepId: s.altNextStepId,
+            }))
+          );
+        }
+      })
+      .catch(console.error);
+  }, [flowId]);
 
   // Adicionar novo passo
   const addStep = (type: string) => {
