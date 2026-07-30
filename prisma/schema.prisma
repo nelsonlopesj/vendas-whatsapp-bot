@@ -1,0 +1,204 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ===== MULTI-TENANT =====
+model Tenant {
+  id               String   @id @default(cuid())
+  name             String
+  slug             String   @unique
+  whatsappNumber   String?
+  evolutionUrl     String?
+  evolutionApikey  String?
+  mercadopagoToken String?
+  isActive         Boolean  @default(true)
+  users            User[]
+  products         Product[]
+  flows            Flow[]
+  sales            Sale[]
+  sessions         FlowSession[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+// ===== USUÁRIO =====
+model User {
+  id            String    @id @default(cuid())
+  tenantId      String
+  tenant        Tenant    @relation(fields: [tenantId], references: [id])
+  email         String    @unique
+  name          String?
+  password      String?   // bcrypt hash
+  role          String    @default("owner") // owner | admin | operator
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+  products      Product[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ===== PRODUTO =====
+model Product {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  name        String
+  keyword     String   // Palavra-chave que dispara o fluxo (ex: "colorir")
+  price       Float
+  description String?
+  fileUrl     String   // URL do arquivo (PDF, MP3, etc.)
+  fileSize    Int?     // Tamanho em bytes
+  fileType    String?  // MIME type
+  active      Boolean  @default(true)
+  sales       Sale[]
+  flowSteps   FlowStep[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ===== FLUXO =====
+model Flow {
+  id             String     @id @default(cuid())
+  tenantId       String
+  tenant         Tenant     @relation(fields: [tenantId], references: [id])
+  name           String     // "Ebook Bobbie Goods"
+  triggerKeyword String     // "colorir" — palavra que ativa este fluxo
+  triggerMode    String     @default("contains") // contains | exact | regex
+  isActive       Boolean    @default(true)
+  welcomeMessage String?    // Mensagem de boas-vindas (opcional, usa step 1 se não tiver)
+  steps          FlowStep[]
+  sessions       FlowSession[]
+  sales          Sale[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+}
+
+// ===== PASSO DO FLUXO =====
+model FlowStep {
+  id        String   @id @default(cuid())
+  flowId    String
+  flow      Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  order     Int      // Ordem no fluxo (1, 2, 3...)
+  type      String   // SEND_MESSAGE | WAIT_RESPONSE | GENERATE_PIX | DELIVER_PRODUCT | CONDITION | LOOP
+  label     String?  // Rótulo visível no editor (ex: "Saudação inicial")
+  config    Json     // Configuração específica do tipo de passo
+  productId String?  // Produto vinculado (opcional, para GENERATE_PIX e DELIVER_PRODUCT)
+  product   Product? @relation(fields: [productId], references: [id])
+  // Conexões de saída para branching visual
+  nextStepId    String?   // Próximo passo padrão (null = fim do fluxo)
+  altNextStepId String?   // Próximo passo alternativo (para CONDITION: rota "não")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ===== SESSÃO DO FLUXO =====
+model FlowSession {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  flowId         String
+  flow           Flow     @relation(fields: [flowId], references: [id])
+  currentStepId  String?  // ID do step atual
+  customerPhone  String
+  customerName   String?
+  status         String   @default("active") // active | waiting_pix | timed_out | completed | failed
+  variables      Json     @default("{}")     // { confirmacao: "sim", pixId: "abc" }
+  loopCounters   Json     @default("{}")     // { "3": 2 } → step 3 executou 2x
+  currentPixId   String?  // ID do PIX Mercado Pago ativo
+  failureReason  String?  // Motivo da falha se status=failed
+  messagesSent   Int      @default(0)        // Contador de mensagens enviadas
+  startedAt      DateTime @default(now())
+  lastActivityAt DateTime @default(now())
+  completedAt    DateTime?
+  sales          Sale[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// ===== VENDA =====
+model Sale {
+  id              String    @id @default(cuid())
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  flowId          String?
+  flow            Flow?     @relation(fields: [flowId], references: [id])
+  sessionId       String?
+  session         FlowSession? @relation(fields: [sessionId], references: [id])
+  productId       String
+  product         Product   @relation(fields: [productId], references: [id])
+  customerPhone   String
+  customerName    String?
+  amount          Float
+  status          String    @default("PENDING") // PENDING | PAID | CANCELLED | EXPIRED | REFUNDED
+  paymentMethod   String    @default("PIX")     // PIX
+  externalId      String?   @unique             // ID do pagamento Mercado Pago
+  pixCopyPaste    String?   @db.Text
+  pixQrCode       String?   @db.Text            // Base64 do QR code
+  pixExpiresAt    DateTime?                     // Data de expiração do PIX
+  paidAt          DateTime?
+  deliveredAt     DateTime?
+  deliveryStatus  String?   // pending | sent | failed
+  metadata        Json      @default("{}")      // Dados extras do Mercado Pago
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+// ===== MENSAGENS (log de interações) =====
+model MessageLog {
+  id           String   @id @default(cuid())
+  tenantId     String
+  sessionId    String?
+  customerPhone String
+  direction    String   // inbound | outbound
+  type         String   // text | image | document | audio | pix | button
+  content      String?  @db.Text
+  mediaUrl     String?
+  wamId        String?  // ID da mensagem no WhatsApp
+  status       String?  // sent | delivered | read | failed
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now())
+}
+
+// ==== NEXT-AUTH ====
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}

@@ -1,0 +1,103 @@
+version: "3.8"
+
+services:
+  # ===== Portal ezflow (Next.js) =====
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ezflow-portal
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_DATABASE:-ezflow}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-in-production}
+      - NEXTAUTH_URL=https://ezflow.com.br
+      - REDIS_URL=redis://redis:6379
+      - UPLOAD_DIR=/app/public/uploads
+    volumes:
+      - uploads:/app/public/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - ezflow-network
+
+  # ===== PostgreSQL =====
+  db:
+    image: postgres:16-alpine
+    container_name: ezflow-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_DATABASE:-ezflow}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_DATABASE:-ezflow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ezflow-network
+
+  # ===== Redis =====
+  redis:
+    image: redis:7-alpine
+    container_name: ezflow-redis
+    restart: unless-stopped
+    volumes:
+      - redisdata:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - ezflow-network
+
+  # ===== Evolution API (WhatsApp) =====
+  evolution:
+    image: atendai/evolution-api:latest
+    container_name: ezflow-evolution
+    restart: unless-stopped
+    environment:
+      - SERVER_URL=http://evolution:8080
+      - SERVER_PORT=8080
+      - SERVER_TYPE=http
+      - WEBHOOK_GLOBAL_ENABLED=true
+      - WEBHOOK_GLOBAL_URL=https://ezflow.com.br/api/webhooks/evolution
+      - WEBHOOK_GLOBAL_EVENTS=MESSAGES_UPSERT
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-ezflow-evolution-key}
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_URI=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_DATABASE:-ezflow}
+      - REDIS_ENABLED=true
+      - REDIS_URI=redis://redis:6379
+      - LOG_LEVEL=WARN
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - evolution-files:/app/files
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - ezflow-network
+
+volumes:
+  pgdata:
+  redisdata:
+  uploads:
+  evolution-files:
+
+networks:
+  ezflow-network:
+    driver: bridge

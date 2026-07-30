@@ -1,0 +1,856 @@
+"use client";
+
+import { useState, useCallback } from "react";
+import {
+  Plus,
+  MessageSquare,
+  Clock,
+  QrCode,
+  Package,
+  GitBranch,
+  RotateCcw,
+  Save,
+  Play,
+  ArrowRight,
+  Trash2,
+  GripVertical,
+  AlertCircle,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
+import { clsx } from "clsx";
+
+// Tipos de passo disponíveis
+const STEP_TYPES = [
+  {
+    type: "SEND_MESSAGE",
+    label: "Enviar Mensagem",
+    icon: MessageSquare,
+    color: "bg-blue-500",
+    colorLight: "bg-blue-500/10",
+    colorText: "text-blue-500",
+    description: "Envia uma mensagem de texto para o cliente",
+  },
+  {
+    type: "WAIT_RESPONSE",
+    label: "Esperar Resposta",
+    icon: Clock,
+    color: "bg-orange-500",
+    colorLight: "bg-orange-500/10",
+    colorText: "text-orange-500",
+    description: "Aguarda a resposta do cliente (Sim/Não/texto)",
+  },
+  {
+    type: "GENERATE_PIX",
+    label: "Gerar PIX",
+    icon: QrCode,
+    color: "bg-green-500",
+    colorLight: "bg-green-500/10",
+    colorText: "text-green-500",
+    description: "Gera cobrança PIX via Mercado Pago",
+  },
+  {
+    type: "DELIVER_PRODUCT",
+    label: "Entregar Produto",
+    icon: Package,
+    color: "bg-purple-500",
+    colorLight: "bg-purple-500/10",
+    colorText: "text-purple-500",
+    description: "Envia o arquivo do produto ao cliente",
+  },
+  {
+    type: "CONDITION",
+    label: "Condição",
+    icon: GitBranch,
+    color: "bg-yellow-500",
+    colorLight: "bg-yellow-500/10",
+    colorText: "text-yellow-500",
+    description: "Bifurca o fluxo baseado na resposta",
+  },
+  {
+    type: "LOOP",
+    label: "Loop",
+    icon: RotateCcw,
+    color: "bg-red-500",
+    colorLight: "bg-red-500/10",
+    colorText: "text-red-500",
+    description: "Repete passos anteriores (com limite)",
+  },
+];
+
+const EXIT_NODES = [
+  {
+    type: "EXIT_SUCCESS",
+    label: "Saída (Sucesso)",
+    icon: CheckCircle2,
+    color: "text-green-500",
+    description: "Fluxo concluído com sucesso",
+  },
+  {
+    type: "EXIT_FAILURE",
+    label: "Saída (Falha)",
+    icon: XCircle,
+    color: "text-red-500",
+    description: "Timeout, resposta inesperada, PIX expirado",
+  },
+];
+
+interface FlowStep {
+  id: string;
+  type: string;
+  label: string;
+  config: Record<string, any>;
+  productId?: string;
+  nextStepId?: string;
+  altNextStepId?: string;
+}
+
+interface FlowEditorProps {
+  flowId?: string;
+}
+
+export function FlowEditor({ flowId }: FlowEditorProps) {
+  const [flowName, setFlowName] = useState("Novo Fluxo");
+  const [triggerKeyword, setTriggerKeyword] = useState("");
+  const [triggerMode, setTriggerMode] = useState("contains");
+  const [steps, setSteps] = useState<FlowStep[]>([]);
+  const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const selectedStep = steps.find((s) => s.id === selectedStepId);
+
+  // Adicionar novo passo
+  const addStep = (type: string) => {
+    const typeDef = STEP_TYPES.find((t) => t.type === type);
+    const newStep: FlowStep = {
+      id: crypto.randomUUID(),
+      type,
+      label: typeDef?.label || type,
+      config: getDefaultConfig(type),
+      nextStepId: undefined,
+      altNextStepId: undefined,
+    };
+    setSteps([...steps, newStep]);
+    setSelectedStepId(newStep.id);
+  };
+
+  // Remover passo
+  const removeStep = (id: string) => {
+    setSteps(steps.filter((s) => s.id !== id));
+    if (selectedStepId === id) setSelectedStepId(null);
+  };
+
+  // Atualizar config do passo selecionado
+  const updateStepConfig = (config: Record<string, any>) => {
+    setSteps(
+      steps.map((s) =>
+        s.id === selectedStepId ? { ...s, config: { ...s.config, ...config } } : s
+      )
+    );
+  };
+
+  // Atualizar label do passo
+  const updateStepLabel = (label: string) => {
+    setSteps(
+      steps.map((s) => (s.id === selectedStepId ? { ...s, label } : s))
+    );
+  };
+
+  // Conectar próximo passo
+  const setNextStep = (fromId: string, toId: string | undefined) => {
+    setSteps(
+      steps.map((s) =>
+        s.id === fromId ? { ...s, nextStepId: toId } : s
+      )
+    );
+  };
+
+  // Conectar passo alternativo (CONDITION "não")
+  const setAltNextStep = (fromId: string, toId: string | undefined) => {
+    setSteps(
+      steps.map((s) =>
+        s.id === fromId ? { ...s, altNextStepId: toId } : s
+      )
+    );
+  };
+
+  // Mover passo para cima/baixo
+  const moveStep = (id: string, direction: "up" | "down") => {
+    const idx = steps.findIndex((s) => s.id === id);
+    if (idx === -1) return;
+    if (direction === "up" && idx === 0) return;
+    if (direction === "down" && idx === steps.length - 1) return;
+
+    const newSteps = [...steps];
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    [newSteps[idx], newSteps[swapIdx]] = [newSteps[swapIdx], newSteps[idx]];
+    setSteps(newSteps);
+  };
+
+  // Salvar fluxo
+  const saveFlow = async () => {
+    setSaving(true);
+    setMessage("");
+
+    const method = flowId ? "PUT" : "POST";
+    const url = flowId ? `/api/flows/${flowId}` : "/api/flows";
+
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: flowName,
+        triggerKeyword,
+        triggerMode,
+        steps: steps.map((s, i) => ({
+          type: s.type,
+          label: s.label,
+          config: s.config,
+          productId: s.productId,
+          nextStepId: s.nextStepId,
+          altNextStepId: s.altNextStepId,
+        })),
+      }),
+    });
+
+    setSaving(false);
+
+    if (res.ok) {
+      setMessage("Fluxo salvo com sucesso!");
+    } else {
+      setMessage("Erro ao salvar. Verifique os dados.");
+    }
+  };
+
+  return (
+    <div className="flex gap-6 h-[calc(100vh-12rem)]">
+      {/* Canvas principal */}
+      <div className="flex-1 flex flex-col">
+        {/* Toolbar */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <input
+              type="text"
+              value={flowName}
+              onChange={(e) => setFlowName(e.target.value)}
+              className="text-lg font-semibold bg-transparent border-none focus:outline-none focus:ring-0 px-0"
+              placeholder="Nome do fluxo"
+            />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Keyword:</span>
+              <input
+                type="text"
+                value={triggerKeyword}
+                onChange={(e) => setTriggerKeyword(e.target.value)}
+                className="w-32 px-3 py-1.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                placeholder="ex: colorir"
+              />
+              <select
+                value={triggerMode}
+                onChange={(e) => setTriggerMode(e.target.value)}
+                className="px-3 py-1.5 rounded-lg border border-input bg-background text-sm"
+              >
+                <option value="contains">Contém</option>
+                <option value="exact">Exato</option>
+                <option value="regex">Regex</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {message && (
+              <span
+                className={`text-sm ${
+                  message.includes("Erro")
+                    ? "text-destructive"
+                    : "text-green-600"
+                }`}
+              >
+                {message}
+              </span>
+            )}
+            <button
+              onClick={saveFlow}
+              disabled={saving}
+              className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              Salvar
+            </button>
+          </div>
+        </div>
+
+        {/* Canvas */}
+        <div className="flex-1 bg-card border border-border rounded-xl overflow-y-auto p-6">
+          {/* Trigger node (INÍCIO) */}
+          <div className="flex flex-col items-center">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500/10 border-2 border-green-500/30 text-sm font-medium text-green-700">
+              <CheckCircle2 className="w-4 h-4" />
+              INÍCIO
+            </div>
+            <div className="w-0.5 h-6 bg-muted-foreground/30" />
+            <span className="text-xs text-muted-foreground mb-2">
+              Keyword: &ldquo;{triggerKeyword || "..."}&rdquo;
+            </span>
+            <div className="w-0.5 h-6 bg-muted-foreground/30" />
+          </div>
+
+          {/* Steps */}
+          {steps.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-sm text-muted-foreground mb-4">
+                Adicione passos para construir seu fluxo de venda
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Clique nos botões ao lado para adicionar caixinhas
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center">
+              {steps.map((step, idx) => {
+                const typeDef = STEP_TYPES.find((t) => t.type === step.type);
+                const Icon = typeDef?.icon || MessageSquare;
+                const isSelected = selectedStepId === step.id;
+
+                return (
+                  <div key={step.id} className="flex flex-col items-center">
+                    {/* Conexão (seta) */}
+                    {idx > 0 && (
+                      <div className="flex flex-col items-center">
+                        <div className="w-0.5 h-4 bg-muted-foreground/30" />
+                        <ArrowRight className="w-4 h-4 text-muted-foreground/50 rotate-90" />
+                        <div className="w-0.5 h-4 bg-muted-foreground/30" />
+                      </div>
+                    )}
+
+                    {/* Step card */}
+                    <div
+                      onClick={() => setSelectedStepId(step.id)}
+                      className={clsx(
+                        "w-80 px-4 py-3 rounded-xl border-2 cursor-pointer transition-all",
+                        isSelected
+                          ? "border-primary shadow-lg shadow-primary/10"
+                          : "border-border hover:border-primary/30"
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={clsx(
+                            "p-1.5 rounded-lg",
+                            typeDef?.colorLight
+                          )}
+                        >
+                          <Icon
+                            className={clsx("w-4 h-4", typeDef?.colorText)}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">
+                            {step.label}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {typeDef?.label}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveStep(step.id, "up");
+                            }}
+                            className="p-1 rounded hover:bg-secondary text-muted-foreground"
+                            title="Mover para cima"
+                          >
+                            <ArrowRight className="w-3 h-3 -rotate-90" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              moveStep(step.id, "down");
+                            }}
+                            className="p-1 rounded hover:bg-secondary text-muted-foreground"
+                            title="Mover para baixo"
+                          >
+                            <ArrowRight className="w-3 h-3 rotate-90" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeStep(step.id);
+                            }}
+                            className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                            title="Remover passo"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Indicador de conexão */}
+                      {step.nextStepId && (
+                        <div className="mt-2 pt-2 border-t border-border">
+                          <p className="text-xs text-muted-foreground">
+                            → Próximo:{" "}
+                            {steps.find((s) => s.id === step.nextStepId)?.label ||
+                              "Saída"}
+                          </p>
+                        </div>
+                      )}
+                      {step.altNextStepId && (
+                        <div className="mt-1">
+                          <p className="text-xs text-red-400">
+                            ↳ Alternativo:{" "}
+                            {steps.find((s) => s.id === step.altNextStepId)
+                              ?.label || "Falha"}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Nós de saída */}
+              <div className="flex flex-col items-center mt-2">
+                <div className="w-0.5 h-4 bg-muted-foreground/30" />
+                <ArrowRight className="w-4 h-4 text-muted-foreground/50 rotate-90" />
+                <div className="w-0.5 h-4 bg-muted-foreground/30" />
+                {/* EXIT_SUCCESS */}
+                <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500/5 border border-dashed border-green-500/30 text-sm text-green-600">
+                  <CheckCircle2 className="w-4 h-4" />
+                  SUCESSO
+                </div>
+                <div className="w-0.5 h-3 bg-muted-foreground/20" />
+                <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/5 border border-dashed border-red-500/30 text-sm text-red-500">
+                  <XCircle className="w-4 h-4" />
+                  FALHA
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Sidebar — Adicionar passos + Config */}
+      <div className="w-80 shrink-0 space-y-4 overflow-y-auto">
+        {/* Adicionar passos */}
+        <div className="bg-card border border-border rounded-xl p-4">
+          <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+            <Plus className="w-4 h-4" />
+            Adicionar Passo
+          </h3>
+          <div className="space-y-1.5">
+            {STEP_TYPES.map((type) => (
+              <button
+                key={type.type}
+                onClick={() => addStep(type.type)}
+                className={clsx(
+                  "w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors hover:bg-secondary"
+                )}
+              >
+                <div className={clsx("p-1.5 rounded-md", type.colorLight)}>
+                  <type.icon className={clsx("w-4 h-4", type.colorText)} />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{type.label}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {type.description}
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Config do passo selecionado */}
+        {selectedStep && (
+          <div className="bg-card border border-border rounded-xl p-4">
+            <h3 className="text-sm font-semibold mb-3">
+              Configurar: {selectedStep.label}
+            </h3>
+            <StepConfigPanel
+              step={selectedStep}
+              allSteps={steps}
+              onUpdateConfig={updateStepConfig}
+              onUpdateLabel={updateStepLabel}
+              onSetNextStep={(toId) => setNextStep(selectedStep.id, toId)}
+              onSetAltNextStep={(toId) =>
+                setAltNextStep(selectedStep.id, toId)
+              }
+            />
+          </div>
+        )}
+
+        {!selectedStep && (
+          <div className="bg-card border border-border rounded-xl p-4 text-center">
+            <AlertCircle className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+            <p className="text-sm text-muted-foreground">
+              Clique em uma caixinha no canvas para configurar
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Configuração padrão por tipo de passo
+function getDefaultConfig(type: string): Record<string, any> {
+  switch (type) {
+    case "SEND_MESSAGE":
+      return { text: "Olá! Como posso ajudar?" };
+    case "WAIT_RESPONSE":
+      return {
+        variable: "resposta",
+        expected: ["sim", "quero", "yes"],
+        timeout: 3600,
+        onTimeout: "exit",
+        retryMessage: "Ainda está aí?",
+        maxRetries: 2,
+      };
+    case "GENERATE_PIX":
+      return {
+        valueFrom: "product",
+        description: "Pagamento do produto",
+        expirationMinutes: 30,
+        onExpired: "exit",
+        onPaid: "continue",
+        onCancelled: "jump_to_step:1",
+      };
+    case "DELIVER_PRODUCT":
+      return {
+        message: "Aqui está seu produto! Obrigado pela compra.",
+      };
+    case "CONDITION":
+      return {
+        variable: "resposta",
+        operator: "contains_any",
+        routes: [
+          { values: ["sim", "yes"], goToType: "next" },
+          { values: ["não", "no"], goToType: "alt" },
+          { values: ["*"], goToType: "prev" },
+        ],
+      };
+    case "LOOP":
+      return {
+        maxIterations: 3,
+        backToStepIndex: 0,
+        exitCondition: "",
+      };
+    default:
+      return {};
+  }
+}
+
+// Painel de configuração por tipo de passo
+function StepConfigPanel({
+  step,
+  allSteps,
+  onUpdateConfig,
+  onUpdateLabel,
+  onSetNextStep,
+  onSetAltNextStep,
+}: {
+  step: FlowStep;
+  allSteps: FlowStep[];
+  onUpdateConfig: (config: Record<string, any>) => void;
+  onUpdateLabel: (label: string) => void;
+  onSetNextStep: (toId: string | undefined) => void;
+  onSetAltNextStep: (toId: string | undefined) => void;
+}) {
+  const config = step.config;
+
+  return (
+    <div className="space-y-4">
+      {/* Label */}
+      <div>
+        <label className="block text-xs font-medium mb-1">Rótulo</label>
+        <input
+          type="text"
+          value={step.label}
+          onChange={(e) => onUpdateLabel(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
+      </div>
+
+      {/* Próximo passo */}
+      <div>
+        <label className="block text-xs font-medium mb-1">
+          Próximo passo (seguir)
+        </label>
+        <select
+          value={step.nextStepId || ""}
+          onChange={(e) => onSetNextStep(e.target.value || undefined)}
+          className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+        >
+          <option value="">Fim do fluxo (sucesso)</option>
+          {allSteps
+            .filter((s) => s.id !== step.id)
+            .map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+        </select>
+      </div>
+
+      {/* Passo alternativo (CONDITION, WAIT_RESPONSE) */}
+      {(step.type === "CONDITION" || step.type === "WAIT_RESPONSE") && (
+        <div>
+          <label className="block text-xs font-medium mb-1">
+            Passo alternativo (recusa/falha)
+          </label>
+          <select
+            value={step.altNextStepId || ""}
+            onChange={(e) => onSetAltNextStep(e.target.value || undefined)}
+            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+          >
+            <option value="">Encerrar como falha</option>
+            {allSteps
+              .filter((s) => s.id !== step.id)
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
+
+      {/* Configs específicas por tipo */}
+      {step.type === "SEND_MESSAGE" && (
+        <div>
+          <label className="block text-xs font-medium mb-1">
+            Texto da mensagem
+          </label>
+          <textarea
+            value={config.text || ""}
+            onChange={(e) => onUpdateConfig({ text: e.target.value })}
+            rows={4}
+            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+            placeholder="Use {{product.name}} e {{product.price}} como variáveis"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Variáveis: {"{{product.name}}"}, {"{{product.price}}"},{" "}
+            {"{{customer.name}}"}
+          </p>
+        </div>
+      )}
+
+      {step.type === "WAIT_RESPONSE" && (
+        <>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Respostas esperadas (separadas por vírgula)
+            </label>
+            <input
+              type="text"
+              value={(config.expected || []).join(", ")}
+              onChange={(e) =>
+                onUpdateConfig({
+                  expected: e.target.value
+                    .split(",")
+                    .map((s: string) => s.trim().toLowerCase())
+                    .filter(Boolean),
+                })
+              }
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="sim, quero, yes"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Timeout (segundos)
+            </label>
+            <input
+              type="number"
+              value={config.timeout || 3600}
+              onChange={(e) =>
+                onUpdateConfig({ timeout: parseInt(e.target.value) || 3600 })
+              }
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Ao atingir timeout
+            </label>
+            <select
+              value={config.onTimeout || "exit"}
+              onChange={(e) => onUpdateConfig({ onTimeout: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            >
+              <option value="exit">Encerrar fluxo</option>
+              <option value="retry">Reenviar pergunta</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Máximo de retentativas
+            </label>
+            <input
+              type="number"
+              value={config.maxRetries || 2}
+              onChange={(e) =>
+                onUpdateConfig({ maxRetries: parseInt(e.target.value) || 2 })
+              }
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            />
+          </div>
+        </>
+      )}
+
+      {step.type === "GENERATE_PIX" && (
+        <>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Expira em (minutos)
+            </label>
+            <input
+              type="number"
+              value={config.expirationMinutes || 30}
+              onChange={(e) =>
+                onUpdateConfig({
+                  expirationMinutes: parseInt(e.target.value) || 30,
+                })
+              }
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Se PIX expirar
+            </label>
+            <select
+              value={config.onExpired || "exit"}
+              onChange={(e) => onUpdateConfig({ onExpired: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            >
+              <option value="exit">Encerrar fluxo</option>
+              <option value="retry">Oferecer novo PIX</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Se PIX cancelado
+            </label>
+            <select
+              value={config.onCancelled || "exit"}
+              onChange={(e) => onUpdateConfig({ onCancelled: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            >
+              <option value="exit">Encerrar fluxo</option>
+              <option value="retry">Voltar ao início</option>
+            </select>
+          </div>
+        </>
+      )}
+
+      {step.type === "DELIVER_PRODUCT" && (
+        <div>
+          <label className="block text-xs font-medium mb-1">
+            Mensagem de entrega
+          </label>
+          <textarea
+            value={config.message || ""}
+            onChange={(e) => onUpdateConfig({ message: e.target.value })}
+            rows={3}
+            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+            placeholder="Aqui está seu produto! Obrigado pela compra."
+          />
+        </div>
+      )}
+
+      {step.type === "CONDITION" && (
+        <div>
+          <label className="block text-xs font-medium mb-1">
+            Expressão da condição
+          </label>
+          <div className="space-y-2">
+            <select
+              value={config.operator || "contains_any"}
+              onChange={(e) => onUpdateConfig({ operator: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            >
+              <option value="contains_any">Contém qualquer um</option>
+              <option value="equals">Igual a</option>
+              <option value="not_contains">Não contém</option>
+            </select>
+            <input
+              type="text"
+              value={(config.routes?.[0]?.values || []).join(", ")}
+              onChange={(e) => {
+                const values = e.target.value
+                  .split(",")
+                  .map((s: string) => s.trim().toLowerCase());
+                onUpdateConfig({
+                  routes: [
+                    { values, goToType: "next" },
+                    { values: ["*"], goToType: "alt" },
+                  ],
+                });
+              }}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+              placeholder="Valores para rota SIM (ex: sim, quero, yes)"
+            />
+            <input
+              type="text"
+              value={(config.routes?.[1]?.values || [])
+                .filter((v: string) => v !== "*")
+                .join(", ")}
+              onChange={(e) => {
+                const values = e.target.value
+                  .split(",")
+                  .map((s: string) => s.trim().toLowerCase());
+                onUpdateConfig({
+                  routes: [
+                    config.routes?.[0] || { values: [], goToType: "next" },
+                    { values: [...values, "*"], goToType: "alt" },
+                  ],
+                });
+              }}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+              placeholder="Valores para rota NÃO (ex: não, nao, no)"
+            />
+          </div>
+        </div>
+      )}
+
+      {step.type === "LOOP" && (
+        <>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Máximo de iterações
+            </label>
+            <input
+              type="number"
+              value={config.maxIterations || 3}
+              onChange={(e) =>
+                onUpdateConfig({
+                  maxIterations: parseInt(e.target.value) || 3,
+                })
+              }
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Condição de saída (opcional)
+            </label>
+            <input
+              type="text"
+              value={config.exitCondition || ""}
+              onChange={(e) => onUpdateConfig({ exitCondition: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+              placeholder="variable:confirmacao=sim"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Formato: variable:nome=valor
+            </p>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
