@@ -11,14 +11,14 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - NODE_ENV=production
-      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_DATABASE:-ezflow}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET:-change-me-in-production}
-      - NEXTAUTH_URL=https://ezflow.com.br
-      - REDIS_URL=redis://redis:6379
-      - UPLOAD_DIR=/app/public/uploads
-      - EVOLUTION_API_URL=http://evolution:8080
-      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY:-ezflow-master-key}
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      NEXTAUTH_URL: ${NEXTAUTH_URL}
+      REDIS_URL: ${REDIS_URL}
+      UPLOAD_DIR: /app/public/uploads
+      EVOLUTION_API_URL: http://evolution:8080
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
     volumes:
       - uploads:/app/public/uploads
     depends_on:
@@ -35,15 +35,19 @@ services:
     container_name: ezflow-db
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=${DB_USER:-postgres}
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
-      - POSTGRES_DB=${DB_DATABASE:-ezflow}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_DATABASE}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_DATABASE:-ezflow}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${DB_USER} -d ${DB_DATABASE}"
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -62,23 +66,23 @@ services:
     networks:
       - ezflow-network
 
-  # ===== Evolution API (WhatsApp via QR Code) =====
+  # ===== Evolution API =====
   evolution:
     image: evoapicloud/evolution-api:homolog
     container_name: ezflow-evolution
     restart: unless-stopped
     environment:
-      - SERVER_URL=http://evolution:8080
-      - SERVER_PORT=8080
-      - SERVER_TYPE=http
-      - AUTHENTICATION_TYPE=apikey
-      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-ezflow-evolution-key-2024}
-      - DATABASE_ENABLED=true
-      - DATABASE_PROVIDER=postgresql
-      - DATABASE_URI=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_DATABASE:-ezflow}
-      - REDIS_ENABLED=true
-      - REDIS_URI=redis://redis:6379
-      - LOG_LEVEL=WARN
+      SERVER_URL: http://evolution:8080
+      SERVER_PORT: "8080"
+      SERVER_TYPE: http
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_URI: ${DATABASE_URL}
+      REDIS_ENABLED: "true"
+      REDIS_URI: ${REDIS_URL}
+      LOG_LEVEL: WARN
     ports:
       - "8081:8080"
     volumes:
@@ -95,6 +99,7 @@ volumes:
   pgdata:
   redisdata:
   uploads:
+  evolution-files:
 
 networks:
   ezflow-network:
