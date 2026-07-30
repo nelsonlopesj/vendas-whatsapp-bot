@@ -19,7 +19,7 @@ export async function GET() {
   }
 
   try {
-    const instance = `tenant-${tenant.slug}`;
+    const instance = "default";
     const baseUrl = WA_URL.replace(/\/$/, "");
 
     // Criar instância (idempotente)
