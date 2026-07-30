@@ -585,6 +585,9 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
               onSetAltNextStep={(toId) =>
                 setAltNextStep(selectedStep.id, toId)
               }
+              onSetProductId={(pid) => {
+                setSteps(steps.map(s => s.id === selectedStep.id ? {...s, productId: pid} : s));
+              }}
             />
           </div>
         )}
@@ -665,8 +668,12 @@ function StepConfigPanel({
   onUpdateLabel: (label: string) => void;
   onSetNextStep: (toId: string | undefined) => void;
   onSetAltNextStep: (toId: string | undefined) => void;
+  onSetProductId: (productId: string | null) => void;
 }) {
   const config = step.config;
+  const [products, setProducts] = useState<Array<{ id: string; name: string; price: number; keyword: string }>>([]);
+  const [productsLoaded, setProductsLoaded] = useState(false);
+  useEffect(() => { fetch("/api/products").then(r => r.json()).then(d => { setProducts(d.products || []); setProductsLoaded(true); }).catch(() => setProductsLoaded(true)); }, []);
 
   return (
     <div className="space-y-4">
@@ -810,6 +817,26 @@ function StepConfigPanel({
 
       {step.type === "GENERATE_PIX" && (
         <>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Produto
+            </label>
+            <select
+              value={step.productId || ""}
+              onChange={(e) => onSetProductId(e.target.value || null)}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            >
+              <option value="">Selecione um produto...</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} (R$ {p.price.toFixed(2)})
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground mt-1">
+              O preço e arquivo de entrega serão usados deste produto
+            </p>
+          </div>
           <div>
             <label className="block text-xs font-medium mb-1">
               Expira em (minutos)
