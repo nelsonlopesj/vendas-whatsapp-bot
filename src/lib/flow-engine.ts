@@ -315,9 +315,9 @@ export class FlowEngine {
         // Verificar se resposta é esperada
         const expected = config.expected || [];
         if (expected.length > 0 && matchResponse(message, expected)) {
-          nextStepId = currentStep.nextStepId; // Seguir caminho padrão
+          nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
         } else {
-          nextStepId = currentStep.altNextStepId; // Caminho alternativo (recusa)
+          nextStepId = currentStep.altNextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
           // Se não tem altNextStepId e tem retry configurado
           if (!nextStepId && config.maxRetries > 0) {
             const retryCount = loopCounters[currentStep.id] || 0;
@@ -350,9 +350,9 @@ export class FlowEngine {
             matchResponse(message, routeValues, config.operator)
           ) {
             if (route.goToType === "next") {
-              nextStepId = currentStep.nextStepId;
+              nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
             } else if (route.goToType === "alt") {
-              nextStepId = currentStep.altNextStepId;
+              nextStepId = currentStep.altNextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
             }
             matched = true;
             break;
@@ -478,7 +478,6 @@ export class FlowEngine {
           console.error("Failed to send message:", err);
         }
 
-        // Log da mensagem enviada
         await prisma.messageLog.create({
           data: {
             tenantId,
@@ -490,8 +489,10 @@ export class FlowEngine {
           },
         });
 
+        // Auto-avançar: se não tem nextStepId, vai pro próximo por ordem
+        const nextByOrder = allSteps.find(s => s.order === step.order + 1);
         return {
-          nextStepId: step.nextStepId,
+          nextStepId: step.nextStepId || nextByOrder?.id || null,
           status: "active",
           variables,
           loopCounters,
@@ -672,7 +673,7 @@ export class FlowEngine {
         // CONDITION é processado em continueSession quando chega a resposta
         // Aqui apenas avança (não deve acontecer — CONDITION sempre segue WAIT_RESPONSE)
         return {
-          nextStepId: step.nextStepId,
+          nextStepId: step.nextStepId || allSteps.find(s => s.order === step.order + 1)?.id || null,
           status: "active",
           variables,
           loopCounters,
@@ -723,7 +724,7 @@ export class FlowEngine {
 
       default:
         return {
-          nextStepId: step.nextStepId,
+          nextStepId: step.nextStepId || allSteps.find(s => s.order === step.order + 1)?.id || null,
           status: "active",
           variables,
           loopCounters,
