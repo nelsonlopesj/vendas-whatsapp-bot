@@ -79,15 +79,37 @@ export async function PUT(
             label: step.label || step.type,
             config: step.config || {},
             productId: step.productId || null,
-            nextStepId: step.nextStepId || null,
-            altNextStepId: step.altNextStepId || null,
           })),
         },
       },
       include: { steps: { orderBy: { order: "asc" } } },
     });
 
-    return NextResponse.json({ flow });
+    // Mapear IDs antigos → novos para nextStepId/altNextStepId
+    const oldToNew: Record<string, string> = {};
+    (steps || []).forEach((s: any, i: number) => {
+      if (s.id && flow.steps[i]) oldToNew[s.id] = flow.steps[i].id;
+    });
+    for (let i = 0; i < (steps || []).length; i++) {
+      const s = steps[i];
+      const db = flow.steps[i];
+      if (!db) continue;
+      const nextId = s.nextStepId ? oldToNew[s.nextStepId] || null : null;
+      const altId = s.altNextStepId ? oldToNew[s.altNextStepId] || null : null;
+      if (nextId || altId) {
+        await prisma.flowStep.update({
+          where: { id: db.id },
+          data: { nextStepId: nextId, altNextStepId: altId },
+        });
+      }
+    }
+
+    const updated = await prisma.flow.findUnique({
+      where: { id },
+      include: { steps: { orderBy: { order: "asc" } } },
+    });
+
+    return NextResponse.json({ flow: updated });
   } catch (error: any) {
     console.error("Flow update error:", error);
     return NextResponse.json(

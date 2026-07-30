@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Criar flow com steps (sem nextStepId temporários)
     const flow = await prisma.flow.create({
       data: {
         tenantId,
@@ -48,23 +49,46 @@ export async function POST(req: NextRequest) {
         triggerKeyword: triggerKeyword.toLowerCase().trim(),
         triggerMode: triggerMode || "contains",
         steps: {
-          create: (steps || []).map(
-            (step: any, index: number) => ({
-              order: index + 1,
-              type: step.type,
-              label: step.label || step.type,
-              config: step.config || {},
-              productId: step.productId || null,
-              nextStepId: step.nextStepId || null,
-              altNextStepId: step.altNextStepId || null,
-            })
-          ),
+          create: (steps || []).map((step: any, index: number) => ({
+            order: index + 1,
+            type: step.type,
+            label: step.label || step.type,
+            config: step.config || {},
+            productId: step.productId || null,
+            // nextStepId temporário (UUID do frontend) — mapeamos depois
+          })),
         },
       },
       include: { steps: { orderBy: { order: "asc" } } },
     });
 
-    return NextResponse.json({ flow }, { status: 201 });
+    // Mapear IDs antigos → novos para nextStepId/altNextStepId
+    const oldToNew: Record<string, string> = {};
+    (steps || []).forEach((s: any, i: number) => {
+      if (s.id && flow.steps[i]) oldToNew[s.id] = flow.steps[i].id;
+    });
+
+    // Atualizar nextStepId e altNextStepId com os IDs reais do banco
+    for (let i = 0; i < (steps || []).length; i++) {
+      const step = steps[i];
+      const dbStep = flow.steps[i];
+      if (!dbStep) continue;
+      const nextId = step.nextStepId ? oldToNew[step.nextStepId] : null;
+      const altId = step.altNextStepId ? oldToNew[step.altNextStepId] : null;
+      if (nextId || altId || step.nextStepId || step.altNextStepId) {
+        await prisma.flowStep.update({
+          where: { id: dbStep.id },
+          data: { nextStepId: nextId || null, altNextStepId: altId || null },
+        });
+      }
+    }
+
+    const updated = await prisma.flow.findUnique({
+      where: { id: flow.id },
+      include: { steps: { orderBy: { order: "asc" } } },
+    });
+
+    return NextResponse.json({ flow: updated }, { status: 201 });
   } catch (error: any) {
     console.error("Flow create error:", error);
     return NextResponse.json(
