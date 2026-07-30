@@ -60,6 +60,35 @@ services:
     networks:
       - ezflow-network
 
+  # ===== Evolution API (WhatsApp via QR Code) =====
+  evolution:
+    image: evoapicloud/evolution-api:homolog
+    container_name: ezflow-evolution
+    restart: unless-stopped
+    environment:
+      - SERVER_URL=http://evolution:8080
+      - SERVER_PORT=8080
+      - SERVER_TYPE=http
+      - AUTHENTICATION_TYPE=apikey
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY:-ezflow-evolution-key-2024}
+      - DATABASE_ENABLED=true
+      - DATABASE_PROVIDER=postgresql
+      - DATABASE_URI=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_DATABASE:-ezflow}
+      - REDIS_ENABLED=true
+      - REDIS_URI=redis://redis:6379
+      - LOG_LEVEL=WARN
+    ports:
+      - "8080:8080"
+    volumes:
+      - evolution-files:/app/files
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - ezflow-network
+
 volumes:
   pgdata:
   redisdata:
