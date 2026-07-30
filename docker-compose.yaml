@@ -16,7 +16,7 @@ services:
       NEXTAUTH_URL: ${NEXTAUTH_URL}
       REDIS_URL: ${REDIS_URL}
       UPLOAD_DIR: /app/public/uploads
-      EVOLUTION_API_URL: http://evolution:8080
+      EVOLUTION_API_URL: http://172.17.0.1:8181
       EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
     volumes:
       - uploads:/app/public/uploads
