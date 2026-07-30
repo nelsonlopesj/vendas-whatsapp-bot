@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   Save,
   Loader2,
@@ -37,7 +37,7 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
   const [loadingQr, setLoadingQr] = useState(false);
   const [qrError, setQrError] = useState("");
 
-  const fetchQrCode = useCallback(async () => {
+  const fetchQrCode = async () => {
     setLoadingQr(true);
     setQrError("");
     try {
@@ -47,29 +47,33 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
       if (data.connected) {
         setWaConnected(true);
         setQrCode(null);
+        setLoadingQr(false);
       } else if (data.qrcode) {
         setQrCode(data.qrcode);
         setWaConnected(false);
-      } else if (data.state === "starting") {
-        // Evolution iniciando — tentar de novo em 3 segundos
-        setQrError("Iniciando serviço WhatsApp...");
-        setTimeout(() => fetchQrCode(), 3000);
         setLoadingQr(false);
-        return;
+      } else if (data.state === "starting") {
+        setQrError("Iniciando serviço WhatsApp...");
+        setLoadingQr(false);
+        setTimeout(() => fetchQrCode(), 3000);
       } else if (data.error) {
         setQrError(data.error);
+        setLoadingQr(false);
+      } else {
+        setLoadingQr(false);
       }
     } catch {
       setQrError("Erro ao conectar. Tente novamente.");
+      setLoadingQr(false);
     }
-    setLoadingQr(false);
-  }, [fetchQrCode]);
+  };
 
   useEffect(() => {
     fetchQrCode();
     const interval = setInterval(fetchQrCode, 30000);
     return () => clearInterval(interval);
-  }, [fetchQrCode]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSaveMP = async () => {
     setSaving(true);
