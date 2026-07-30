@@ -76,7 +76,7 @@ export async function GET() {
     return NextResponse.json({
       connected: false,
       state: "qrcode",
-      qrcode: qrData?.qrcode || qrData?.qr_code || null,
+      qrcode: qrData?.base64 || qrData?.qrcode || qrData?.qr_code || null,
     });
   } catch (error: any) {
     console.error("QR Code error:", error.message);
