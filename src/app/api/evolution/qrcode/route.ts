@@ -3,10 +3,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
-/**
- * GET /api/evolution/qrcode
- * Busca o QR Code da Evolution API para conectar o WhatsApp.
- */
+// Config global da Evolution (servidor, não visível ao cliente)
+const EVOLUTION_URL =
+  process.env.EVOLUTION_API_URL || "http://evolution:8080";
+const EVOLUTION_API_KEY =
+  process.env.EVOLUTION_API_KEY || "ezflow-master-key";
+
 export async function GET() {
   const session = await getServerSession(authOptions);
   const tenantId = (session?.user as any)?.tenantId;
@@ -15,54 +17,57 @@ export async function GET() {
   }
 
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-  if (!tenant?.evolutionUrl || !tenant?.evolutionApikey) {
-    return NextResponse.json(
-      { error: "Evolution API não configurada" },
-      { status: 400 }
-    );
+  if (!tenant) {
+    return NextResponse.json({ error: "Tenant não encontrado" }, { status: 400 });
   }
 
   try {
-    const instance = "default";
-    const baseUrl = tenant.evolutionUrl.replace(/\/$/, "");
+    // Cada tenant tem sua própria instância na Evolution API
+    const instance = `tenant-${tenant.slug}`;
+    const baseUrl = EVOLUTION_URL.replace(/\/$/, "");
 
-    // 1. Tentar criar instância (idempotente — se já existe, só retorna)
+    // 1. Criar instância (idempotente)
     await fetch(`${baseUrl}/instance/create`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        apikey: tenant.evolutionApikey,
+        apikey: EVOLUTION_API_KEY,
       },
       body: JSON.stringify({
         instanceName: instance,
-        token: tenant.evolutionApikey,
+        token: EVOLUTION_API_KEY,
         qrcode: true,
         integration: "WHATSAPP-BAILEYS",
       }),
     });
 
-    // 2. Buscar QR Code
+    // 2. Verificar se já está conectado
+    const statusRes = await fetch(
+      `${baseUrl}/instance/connectionState/${instance}`,
+      { headers: { apikey: EVOLUTION_API_KEY } }
+    );
+    const statusData = await statusRes.json();
+
+    if (statusData?.instance?.state === "open") {
+      return NextResponse.json({
+        connected: true,
+        state: "open",
+        qrcode: null,
+      });
+    }
+
+    // 3. Buscar QR Code
     const qrRes = await fetch(
       `${baseUrl}/instance/connect/${instance}`,
-      {
-        headers: { apikey: tenant.evolutionApikey },
-      }
+      { headers: { apikey: EVOLUTION_API_KEY } }
     );
 
     if (!qrRes.ok) {
-      // Pode já estar conectado
-      const statusRes = await fetch(
-        `${baseUrl}/instance/connectionState/${instance}`,
-        {
-          headers: { apikey: tenant.evolutionApikey },
-        }
-      );
-      const statusData = await statusRes.json();
-
       return NextResponse.json({
-        connected: statusData?.instance?.state === "open",
-        state: statusData?.instance?.state || "unknown",
+        connected: false,
+        state: statusData?.instance?.state || "disconnected",
         qrcode: null,
+        error: `Status: ${qrRes.status}. Tente novamente.`,
       });
     }
 
@@ -72,13 +77,12 @@ export async function GET() {
       connected: false,
       state: "qrcode",
       qrcode: qrData?.qrcode || qrData?.qr_code || null,
-      // Evolution API v2 retorna { qrcode: "base64..." } ou { qr_code: "..." }
     });
   } catch (error: any) {
-    console.error("Evolution QR Code error:", error);
+    console.error("QR Code error:", error.message);
     return NextResponse.json(
-      { error: "Erro ao conectar à Evolution API. Verifique a URL." },
-      { status: 500 }
+      { error: "Evolution API indisponível. O serviço está iniciando..." },
+      { status: 200 } // 200 pra não quebrar o frontend
     );
   }
 }

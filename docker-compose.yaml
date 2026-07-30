@@ -17,6 +17,8 @@ services:
       - NEXTAUTH_URL=https://ezflow.com.br
       - REDIS_URL=redis://redis:6379
       - UPLOAD_DIR=/app/public/uploads
+      - EVOLUTION_API_URL=http://evolution:8080
+      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY:-ezflow-master-key}
     volumes:
       - uploads:/app/public/uploads
     depends_on:
