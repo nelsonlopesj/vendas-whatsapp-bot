@@ -142,6 +142,10 @@ export async function DELETE(
     );
   }
 
+  // Deletar dados relacionados primeiro
+  await prisma.flowSession.deleteMany({ where: { flowId: id } });
+  await prisma.sale.updateMany({ where: { flowId: id }, data: { flowId: null } });
+  await prisma.flowStep.deleteMany({ where: { flowId: id } });
   await prisma.flow.delete({ where: { id } });
 
   return NextResponse.json({ success: true });

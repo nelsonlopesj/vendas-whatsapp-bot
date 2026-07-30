@@ -692,29 +692,23 @@ function StepConfigPanel({
         />
       </div>
 
-      {/* Próximo passo */}
-      <div>
-        <label className="block text-xs font-medium mb-1">
-          Próximo passo (seguir)
-        </label>
-        <select
-          value={step.nextStepId || ""}
-          onChange={(e) => onSetNextStep(e.target.value || undefined)}
-          className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
-        >
-          <option value="">Fim do fluxo (sucesso)</option>
-          {allSteps
-            .filter((s) => s.id !== step.id)
-            .map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-        </select>
-      </div>
-
-      {/* Passo alternativo (CONDITION, WAIT_RESPONSE) */}
+      {/* Passo alternativo — só para CONDITION e WAIT_RESPONSE */}
       {(step.type === "CONDITION" || step.type === "WAIT_RESPONSE") && (
+        <div>
+          <label className="block text-xs font-medium mb-1">
+            Próximo se SIM / OK
+          </label>
+          <select
+            value={step.nextStepId || ""}
+            onChange={(e) => onSetNextStep(e.target.value || undefined)}
+            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+          >
+            <option value="">Seguir ordem natural</option>
+            {allSteps.filter((s) => s.id !== step.id).map((s) => (
+              <option key={s.id} value={s.id}>{s.label}</option>
+            ))}
+          </select>
+        </div>
         <div>
           <label className="block text-xs font-medium mb-1">
             Passo alternativo (recusa/falha)
