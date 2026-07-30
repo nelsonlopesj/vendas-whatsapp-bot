@@ -27,6 +27,10 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
+  const [provider, setProvider] = useState<"mercadopago" | "infinitepay">(
+    tenant.mercadopagoToken?.startsWith("inf_") ? "infinitepay" : "mercadopago"
+  );
+
   // WhatsApp state
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [waConnected, setWaConnected] = useState(false);

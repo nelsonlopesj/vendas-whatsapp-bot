@@ -17,6 +17,8 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
+  Download,
+  Upload,
 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -223,6 +225,68 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
     }
   };
 
+  // Exportar fluxo como JSON
+  const exportFlow = () => {
+    const template = {
+      name: flowName,
+      triggerKeyword,
+      triggerMode,
+      steps: steps.map((s, i) => ({
+        order: i + 1,
+        type: s.type,
+        label: s.label,
+        config: s.config,
+      })),
+      exportedAt: new Date().toISOString(),
+      version: "1.0",
+    };
+    const blob = new Blob([JSON.stringify(template, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${flowName.replace(/\s+/g, "-").toLowerCase()}.ezflow.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Importar fluxo de JSON
+  const importFlow = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json";
+    input.onchange = (e: any) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target?.result as string);
+          setFlowName(data.name || "Fluxo Importado");
+          setTriggerKeyword(data.triggerKeyword || "");
+          setTriggerMode(data.triggerMode || "contains");
+          setSteps(
+            (data.steps || []).map((s: any) => ({
+              id: crypto.randomUUID(),
+              type: s.type,
+              label: s.label || s.type,
+              config: s.config || {},
+              productId: null,
+              nextStepId: null,
+              altNextStepId: null,
+            }))
+          );
+          setMessage("Fluxo importado! Revise e salve.");
+        } catch {
+          setMessage("Erro ao importar. Arquivo inválido.");
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  };
+
   return (
     <div className="flex gap-6 h-[calc(100vh-12rem)]">
       {/* Canvas principal */}
@@ -270,6 +334,23 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
                 {message}
               </span>
             )}
+            <button
+              onClick={importFlow}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-input hover:bg-secondary transition-colors"
+              title="Importar fluxo de um arquivo JSON"
+            >
+              <Upload className="w-4 h-4" />
+              Importar
+            </button>
+            <button
+              onClick={exportFlow}
+              disabled={steps.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-input hover:bg-secondary transition-colors disabled:opacity-50"
+              title="Exportar fluxo como template JSON"
+            >
+              <Download className="w-4 h-4" />
+              Exportar
+            </button>
             <button
               onClick={saveFlow}
               disabled={saving}
