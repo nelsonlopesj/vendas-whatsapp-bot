@@ -102,9 +102,9 @@ interface FlowStep {
   type: string;
   label: string;
   config: Record<string, any>;
-  productId?: string;
-  nextStepId?: string;
-  altNextStepId?: string;
+  productId?: string | null;
+  nextStepId?: string | null;
+  altNextStepId?: string | null;
 }
 
 interface FlowEditorProps {
@@ -661,6 +661,7 @@ function StepConfigPanel({
   onUpdateLabel,
   onSetNextStep,
   onSetAltNextStep,
+  onSetProductId,
 }: {
   step: FlowStep;
   allSteps: FlowStep[];
