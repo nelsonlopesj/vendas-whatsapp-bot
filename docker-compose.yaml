@@ -70,7 +70,7 @@ services:
     ports:
       - "8181:8080"
     volumes:
-      - evolution_data:/app/evolution-files
+      - evolution_data:/evolution/instances
     depends_on:
       db:
         condition: service_healthy
