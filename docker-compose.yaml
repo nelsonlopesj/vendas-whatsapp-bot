@@ -9,6 +9,9 @@ services:
     restart: unless-stopped
     ports:
       - "3000:3000"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.ezflow.loadbalancer.server.port=3000"
     environment:
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL}
