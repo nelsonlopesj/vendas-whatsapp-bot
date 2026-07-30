@@ -73,4 +73,5 @@ volumes:
 
 networks:
   ezflow-network:
-    driver: bridge
+    name: ezflow-net
+    external: true
