@@ -196,6 +196,20 @@ export class FlowEngine {
       },
     });
 
+    // Pre-carregar variáveis de produto dos passos
+    const productVars: Record<string, string> = {};
+    for (const step of (flow.steps || [])) {
+      if (step.productId) {
+        const product = await prisma.product.findUnique({ where: { id: step.productId } });
+        if (product) {
+          productVars["product.name"] = product.name;
+          productVars["product.price"] = String(product.price);
+          productVars["product.fileUrl"] = product.fileUrl || "";
+        }
+      }
+    }
+    await prisma.flowSession.update({ where: { id: session.id }, data: { variables: productVars } });
+
     // Executar o primeiro passo
     if (firstStep && evolutionClient) {
       const result = await FlowEngine.executeStep(
