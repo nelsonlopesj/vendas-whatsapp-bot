@@ -51,7 +51,7 @@ export async function GET() {
       // Evolution pode estar iniciando
     }
 
-    // 2. Criar instância
+    // 2. Criar instância + configurar webhook
     try {
       await fetchWithTimeout(
         `${baseUrl}/instance/create`,
@@ -59,6 +59,16 @@ export async function GET() {
           method: "POST",
           headers: { "Content-Type": "application/json", apikey: WA_KEY },
           body: JSON.stringify({ instanceName: instance, token: WA_KEY, qrcode: true, integration: "WHATSAPP-BAILEYS" }),
+        },
+        5000
+      );
+      // Configurar webhook automaticamente
+      await fetchWithTimeout(
+        `${baseUrl}/webhook/set/${instance}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: WA_KEY },
+          body: JSON.stringify({ webhook: { enabled: true, url: `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/api/webhooks/evolution`, events: ["MESSAGES_UPSERT"] } }),
         },
         5000
       );
