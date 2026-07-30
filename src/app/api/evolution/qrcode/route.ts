@@ -29,7 +29,7 @@ export async function GET() {
     const instance = "default";
     const baseUrl = WA_URL.replace(/\/$/, "");
 
-    // 1. Verificar status primeiro (rápido)
+    // 1. Verificar status
     try {
       const statusRes = await fetchWithTimeout(
         `${baseUrl}/instance/connectionState/${instance}`,
@@ -38,15 +38,20 @@ export async function GET() {
       );
       if (statusRes.ok) {
         const statusData = await statusRes.json();
-        if (statusData?.instance?.state === "open") {
+        const state = statusData?.instance?.state;
+        if (state === "open") {
           return NextResponse.json({ connected: true, state: "open", qrcode: null });
+        }
+        // Se tá travado em "connecting", deleta pra recriar limpo
+        if (state === "connecting") {
+          try { await fetchWithTimeout(`${baseUrl}/instance/delete/${instance}`, { method: "DELETE", headers: { apikey: WA_KEY } }, 3000); } catch {}
         }
       }
     } catch {
-      // Evolution pode estar iniciando — continua tentando
+      // Evolution pode estar iniciando
     }
 
-    // 2. Criar instância (idempotente)
+    // 2. Criar instância
     try {
       await fetchWithTimeout(
         `${baseUrl}/instance/create`,
@@ -57,9 +62,7 @@ export async function GET() {
         },
         5000
       );
-    } catch {
-      // Pode já existir
-    }
+    } catch {}
 
     // 3. Buscar QR Code
     try {
@@ -68,7 +71,6 @@ export async function GET() {
         { headers: { apikey: WA_KEY } },
         5000
       );
-
       if (qrRes.ok) {
         const qrData = await qrRes.json();
         const raw = qrData?.base64 || qrData?.qrcode || qrData?.qr_code || null;
@@ -77,9 +79,7 @@ export async function GET() {
           return NextResponse.json({ connected: false, state: "qrcode", qrcode });
         }
       }
-    } catch {
-      // QR code não disponível ainda
-    }
+    } catch {}
 
     // 4. Evolution está iniciando
     return NextResponse.json({
