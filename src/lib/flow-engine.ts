@@ -209,6 +209,8 @@ export class FlowEngine {
       }
     }
     await prisma.flowSession.update({ where: { id: session.id }, data: { variables: productVars } });
+    // Atualizar objeto local para o executeStep usar as variáveis
+    (session as any).variables = productVars;
 
     // Executar o primeiro passo
     if (firstStep && evolutionClient) {
