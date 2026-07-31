@@ -221,8 +221,10 @@ export class FlowEngine {
     let nextId: string | null = firstStep?.id || null;
 
     while (currentStep && evolutionClient) {
+      console.log(`[FLOW-STEP] executing step type=${currentStep.type} label=${currentStep.label}`);
       // Parar ANTES de executar passos que dependem de interação externa
-      if (currentStep.type === "WAIT_RESPONSE" || currentStep.type === "GENERATE_PIX") break;
+      if (currentStep.type === "WAIT_RESPONSE") { console.log("[FLOW-STOP] breaking at WAIT_RESPONSE"); break; }
+      if (currentStep.type === "GENERATE_PIX") { console.log("[FLOW-STOP] breaking at GENERATE_PIX"); break; }
 
       const result = await FlowEngine.executeStep(
         currentStep as FlowStepData,
