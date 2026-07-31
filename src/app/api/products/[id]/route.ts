@@ -19,7 +19,7 @@ export async function PUT(
     return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
   }
 
-  const { name, keyword, price, description, fileUrl } = await req.json();
+  const { name, keyword, price, description, fileUrl, extraFiles } = await req.json();
   const updated = await prisma.product.update({
     where: { id },
     data: {
@@ -28,6 +28,7 @@ export async function PUT(
       price: price !== undefined ? price : existing.price,
       description: description !== undefined ? description : existing.description,
       fileUrl: fileUrl !== undefined ? fileUrl : existing.fileUrl,
+      extraFiles: extraFiles !== undefined ? extraFiles : existing.extraFiles,
     },
   });
 

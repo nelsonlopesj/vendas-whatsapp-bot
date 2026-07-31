@@ -19,7 +19,7 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Product | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", keyword: "", price: "", fileUrl: "", description: "" });
+  const [editForm, setEditForm] = useState({ name: "", keyword: "", price: "", fileUrl: "", description: "", extraFiles: "" });
   const [saving, setSaving] = useState(false);
 
   const fetchProducts = useCallback(async () => {
@@ -47,6 +47,7 @@ export default function ProductsPage() {
       price: String(p.price),
       fileUrl: p.fileUrl || "",
       description: p.description || "",
+      extraFiles: JSON.stringify(p.extraFiles || []),
     });
   };
 
@@ -62,6 +63,7 @@ export default function ProductsPage() {
         price: parseFloat(editForm.price),
         fileUrl: editForm.fileUrl,
         description: editForm.description,
+        extraFiles: (() => { try { return JSON.parse(editForm.extraFiles || "[]"); } catch { return []; } })(),
       }),
     });
     setSaving(false);
@@ -155,6 +157,17 @@ export default function ProductsPage() {
               <div>
                 <label className="block text-xs font-medium mb-1">URL do Arquivo</label>
                 <input type="text" value={editForm.fileUrl} onChange={e => setEditForm({...editForm, fileUrl: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm text-muted-foreground" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">Arquivos extras (JSON)</label>
+                <textarea
+                  value={editForm.extraFiles}
+                  onChange={e => setEditForm({...editForm, extraFiles: e.target.value})}
+                  rows={2}
+                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-xs font-mono"
+                  placeholder='[{"url":"/uploads/arquivo2.pdf","name":"Guia Extra"}]'
+                />
+                <p className="text-xs text-muted-foreground mt-1">Formato JSON com URLs e nomes de arquivos adicionais</p>
               </div>
               <button onClick={saveEdit} disabled={saving} className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50">
                 <Save className="w-4 h-4" /> {saving ? "Salvando..." : "Salvar"}

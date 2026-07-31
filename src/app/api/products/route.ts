@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { name, keyword, price, description, fileUrl, fileType, fileSize } =
+    const { name, keyword, price, description, fileUrl, fileType, fileSize, extraFiles } =
       await req.json();
 
     if (!name || !keyword || price === undefined) {
@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
         price,
         description: description || null,
         fileUrl: fileUrl || "",
+        extraFiles: extraFiles || [],
         fileType: fileType || null,
         fileSize: fileSize || null,
       },

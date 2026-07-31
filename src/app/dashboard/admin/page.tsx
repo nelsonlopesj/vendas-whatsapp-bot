@@ -73,19 +73,24 @@ export default async function AdminPage() {
             </thead>
             <tbody>
               {tenants.map((t) => {
-                const isTrial = t.subscriptionStatus === "trial";
+                const isOwner = t.users[0]?.role === "owner" || t.users[0]?.email === session?.user?.email;
                 const isActive = t.subscriptionStatus === "active";
-                const isExpired = !isActive && !(isTrial && t.trialEndsAt && new Date(t.trialEndsAt) > now);
+                const isExpired = !isActive && !(t.subscriptionStatus === "trial" && t.trialEndsAt && new Date(t.trialEndsAt) > now);
                 const daysLeft = t.trialEndsAt
                   ? Math.ceil((new Date(t.trialEndsAt).getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
                   : 0;
 
                 return (
                   <tr key={t.id} className="border-b border-border hover:bg-muted/20">
-                    <td className="px-4 py-3 font-medium">{t.name}</td>
+                    <td className="px-4 py-3 font-medium">
+                      {t.name}
+                      {isOwner && <span className="ml-2 text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">MASTER</span>}
+                    </td>
                     <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{t.users[0]?.email || "-"}</td>
                     <td className="px-4 py-3">
-                      {isActive ? (
+                      {isOwner ? (
+                        <span className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full"><Sparkles className="w-3 h-3" /> Master</span>
+                      ) : isActive ? (
                         <span className="inline-flex items-center gap-1 text-xs bg-green-500/10 text-green-600 px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3 h-3" /> Pro</span>
                       ) : isExpired ? (
                         <span className="inline-flex items-center gap-1 text-xs bg-red-500/10 text-red-600 px-2 py-0.5 rounded-full"><XCircle className="w-3 h-3" /> Expirado</span>
