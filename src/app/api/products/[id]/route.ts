@@ -50,8 +50,8 @@ export async function DELETE(
     return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
   }
 
-  // Limpar referências
-  await prisma.sale.updateMany({ where: { productId: id }, data: { productId: "deleted" } });
+  // Deletar vendas associadas primeiro
+  await prisma.sale.deleteMany({ where: { productId: id } });
   await prisma.flowStep.updateMany({ where: { productId: id }, data: { productId: null } });
   await prisma.product.delete({ where: { id } });
   return NextResponse.json({ success: true });

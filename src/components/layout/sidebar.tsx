@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   Zap,
+  Users,
 } from "lucide-react";
 import { useState } from "react";
 import { clsx } from "clsx";
@@ -38,6 +39,13 @@ const navItems = [
       { href: "/dashboard/settings", label: "WhatsApp & PIX", icon: Settings },
     ],
   },
+  {
+    section: "Master",
+    items: [
+      { href: "/dashboard/admin", label: "Admin — Clientes", icon: Users },
+    ],
+    ownerOnly: true,
+  },
 ];
 
 export function Sidebar() {
@@ -60,7 +68,7 @@ export function Sidebar() {
         </button>
       </div>
       <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-6">
-        {navItems.map((group) => (
+        {navItems.filter(g => !(g as any).ownerOnly || session?.user && (session.user as any).role === "owner").map((group) => (
           <div key={group.section}>
             <h3 className="px-3 text-xs font-medium text-sidebar-foreground/50 uppercase tracking-wider mb-2">
               {group.section}
