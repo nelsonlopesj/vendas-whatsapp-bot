@@ -1,0 +1,16 @@
+{
+  "name": "Desenhos Bíblicos para Colorir",
+  "triggerKeyword": "colorir",
+  "triggerMode": "contains",
+  "version": "1.0",
+  "description": "Fluxo de venda para PDF de desenhos bíblicos/Bobbie Goods para colorir. Tom amigável e familiar.",
+  "price": 9.90,
+  "steps": [
+    { "order": 1, "type": "DELAY", "label": "Delay", "config": { "seconds": 2 } },
+    { "order": 2, "type": "SEND_MESSAGE", "label": "Saudação", "config": { "text": "Olá! Que bom que você se interessou pelos nossos desenhos bíblicos para colorir! 🎨✨\n\nSão mais de 30 ilustrações lindas com temas cristãos para momentos de fé, criatividade e relaxamento.\n\nO valor é R$ {{product.price}} e você recebe o PDF na hora.\nDigite SIM para adquirir!" } },
+    { "order": 3, "type": "WAIT_RESPONSE", "label": "Confirmação", "config": { "expected": ["sim", "quero", "yes"], "maxRetries": 2, "retryMessage": "Quer colorir e se conectar com a fé? Digite SIM que eu envio! 🎨" } },
+    { "order": 4, "type": "DELAY", "label": "Delay", "config": { "seconds": 1 } },
+    { "order": 5, "type": "GENERATE_PIX", "label": "Gerar PIX", "config": {} },
+    { "order": 6, "type": "DELIVER_PRODUCT", "label": "Entrega", "config": { "message": "Aqui estão seus desenhos bíblicos! 🎨✨\n\nImprima, pegue seus lápis de cor e aproveite esse momento especial. Deus abençoe! 🙏" } }
+  ]
+}

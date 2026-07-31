@@ -1,0 +1,16 @@
+{
+  "name": "Audiobook Meditação Guiada",
+  "triggerKeyword": "audio",
+  "triggerMode": "contains",
+  "version": "1.0",
+  "description": "Fluxo de venda para audiobook de meditação guiada. Tom calmo e acolhedor.",
+  "price": 14.90,
+  "steps": [
+    { "order": 1, "type": "DELAY", "label": "Delay", "config": { "seconds": 2 } },
+    { "order": 2, "type": "SEND_MESSAGE", "label": "Saudação", "config": { "text": "Olá, como vai? Obrigado pelo contato! 🧘‍♀️\n\nVocê se interessou pelo nosso audiobook de meditação guiada — uma experiência de áudio relaxante para reduzir ansiedade e melhorar seu sono.\n\nO valor é R$ {{product.price}} e você recebe o arquivo na hora.\nQuer adquirir? Digite SIM!" } },
+    { "order": 3, "type": "WAIT_RESPONSE", "label": "Confirmação", "config": { "expected": ["sim", "quero", "yes"], "maxRetries": 2, "retryMessage": "Vamos começar sua jornada de paz? Digite SIM para receber o audiobook! 🧘‍♀️" } },
+    { "order": 4, "type": "DELAY", "label": "Delay", "config": { "seconds": 1 } },
+    { "order": 5, "type": "GENERATE_PIX", "label": "Gerar PIX", "config": {} },
+    { "order": 6, "type": "DELIVER_PRODUCT", "label": "Entrega", "config": { "message": "Aqui está seu audiobook de meditação! 🧘‍♀️\n\nColoque seus fones, encontre um lugar tranquilo e aproveite. Paz e bem!" } }
+  ]
+}

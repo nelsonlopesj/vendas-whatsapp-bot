@@ -7,11 +7,12 @@ import {
   ArrowLeftRight,
   Upload,
   Download,
-  MoreHorizontal,
   Pencil,
   Trash2,
   Power,
   PowerOff,
+  Sparkles,
+  ShoppingBag,
 } from "lucide-react";
 
 interface Flow {
@@ -212,6 +213,49 @@ export default function FlowsPage() {
           ))}
         </div>
       )}
+
+      {/* Templates Marketplace */}
+      <div className="bg-card border border-border rounded-xl p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <Sparkles className="w-5 h-5 text-primary" />
+          <h2 className="font-semibold text-lg">Templates Prontos</h2>
+          <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full">Grátis</span>
+        </div>
+        <p className="text-sm text-muted-foreground mb-4">
+          Importe com 1 clique. Depois é só ajustar o produto e o token PIX.
+        </p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {[
+            { name: "Guia da Noiva", desc: "Noivas • R$ 19,90", file: "guia-da-noiva.ezflow.json", color: "bg-pink-500" },
+            { name: "Desenhos Bíblicos", desc: "Colorir • R$ 9,90", file: "desenhos-biblicos.ezflow.json", color: "bg-blue-500" },
+            { name: "Audiobook Meditação", desc: "Bem-estar • R$ 14,90", file: "audiobook-meditacao.ezflow.json", color: "bg-purple-500" },
+          ].map((tpl) => (
+            <button
+              key={tpl.file}
+              onClick={async () => {
+                const res = await fetch(`/templates/${tpl.file}`);
+                const data = await res.json();
+                await fetch("/api/flows", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(data),
+                });
+                fetchFlows();
+              }}
+              className="flex items-start gap-3 p-4 rounded-xl border border-border hover:border-primary/30 hover:bg-primary/5 transition-all text-left"
+            >
+              <div className={`w-10 h-10 rounded-lg ${tpl.color} flex items-center justify-center shrink-0`}>
+                <ShoppingBag className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">{tpl.name}</p>
+                <p className="text-xs text-muted-foreground">{tpl.desc}</p>
+                <p className="text-xs text-primary mt-1 font-medium">Importar grátis →</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

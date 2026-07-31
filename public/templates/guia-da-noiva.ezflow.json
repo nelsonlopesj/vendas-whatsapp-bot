@@ -1,0 +1,16 @@
+{
+  "name": "Guia da Noiva",
+  "triggerKeyword": "noiva",
+  "triggerMode": "contains",
+  "version": "1.0",
+  "description": "Fluxo de venda para Guia/PDF de Noiva. Saudação profissional, confirmação e PIX.",
+  "price": 19.90,
+  "steps": [
+    { "order": 1, "type": "DELAY", "label": "Delay", "config": { "seconds": 2 } },
+    { "order": 2, "type": "SEND_MESSAGE", "label": "Saudação", "config": { "text": "Olá, noivinha! 💍\n\nVi que você se interessou pelo nosso Guia Completo da Noiva — um material exclusivo com checklist, dicas de fornecedores e planejamento completo para o grande dia.\n\nO valor é R$ {{product.price}} e você recebe na hora.\nQuer adquirir? Digite SIM que já envio!" } },
+    { "order": 3, "type": "WAIT_RESPONSE", "label": "Confirmação", "config": { "expected": ["sim", "quero", "yes"], "maxRetries": 2, "retryMessage": "Posso te ajudar? Digite SIM para adquirir o Guia da Noiva 💍" } },
+    { "order": 4, "type": "DELAY", "label": "Delay", "config": { "seconds": 1 } },
+    { "order": 5, "type": "GENERATE_PIX", "label": "Gerar PIX", "config": {} },
+    { "order": 6, "type": "DELIVER_PRODUCT", "label": "Entrega", "config": { "message": "Aqui está seu Guia da Noiva! 💍\n\nEspero que ajude muito no seu planejamento. Qualquer dúvida é só chamar!" } }
+  ]
+}

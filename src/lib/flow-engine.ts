@@ -581,12 +581,17 @@ export class FlowEngine {
         }
 
         try {
-          const mp = new MercadoPagoClient(tenant.mercadopagoToken);
-          const pix = await mp.createPixPayment({
-            amount: price,
-            description,
-            expirationMinutes: config.expirationMinutes || 30,
-          });
+          let pix: { id: string; pixCopyPaste: string; pixQrCodeBase64: string; pixExpiration: string };
+          if (token.startsWith("inf_")) {
+            const { InfinitePayClient } = await import("./infinitepay");
+            const ip = new InfinitePayClient(token);
+            const r = await ip.createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
+            pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
+          } else {
+            const mp = new MercadoPagoClient(token);
+            const r = await mp.createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
+            pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
+          }
 
           // Enviar PIX para o cliente
           // Enviar resumo primeiro
