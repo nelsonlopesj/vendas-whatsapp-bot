@@ -681,7 +681,7 @@ export class FlowEngine {
           try {
             const fullUrl = fileUrl.startsWith("http")
               ? fileUrl
-              : `https://ezflow.com.br${fileUrl}`;
+              : `http://portal:3000${fileUrl}`;
             // Detectar tipo de mídia pela extensão
             const ext = (fileUrl.split(".").pop() || "").toLowerCase();
             const mediaType =
@@ -698,7 +698,8 @@ export class FlowEngine {
             });
           } catch (err) {
             console.error("Failed to send file:", err);
-            await evolutionClient.sendText({ number: phone, text: `📎 Link: ${fileUrl.startsWith("http") ? fileUrl : `https://ezflow.com.br${fileUrl}`}` });
+            const publicUrl = fileUrl.startsWith("http") ? fileUrl : `https://ezflow.com.br${fileUrl}`;
+            await evolutionClient.sendText({ number: phone, text: `📎 Link: ${publicUrl}` });
           }
         }
 
