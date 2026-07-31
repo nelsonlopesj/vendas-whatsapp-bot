@@ -213,6 +213,7 @@ export class FlowEngine {
     (session as any).variables = productVars;
 
     // Executar passos em sequência até chegar em interação ou fim
+    if (firstStep && evolutionClient) {
     let currentStep = firstStep;
     let allVars = { ...productVars };
     let pixId: string | undefined;
@@ -251,8 +252,9 @@ export class FlowEngine {
         currentPixId: pixId || null,
       },
     });
+    }
 
-      const loopCounters: Record<string, number> = {};
+    const loopCounters: Record<string, number> = {};
       return {
         action: "new_session",
         session: {
