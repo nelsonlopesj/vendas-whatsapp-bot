@@ -349,24 +349,20 @@ export class FlowEngine {
         if (expected.length > 0 && matchResponse(message, expected)) {
           nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
         } else {
-          nextStepId = currentStep.altNextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
-          // Se não tem altNextStepId e tem retry configurado
-          if (!nextStepId && config.maxRetries > 0) {
-            const retryCount = loopCounters[currentStep.id] || 0;
-            if (retryCount < (config.maxRetries || 2)) {
-              // Reenviar pergunta
-              loopCounters[currentStep.id] = retryCount + 1;
-              if (evolutionClient && config.retryMessage) {
-                await evolutionClient.sendText({
-                  number: session.customerPhone,
-                  text: config.retryMessage,
-                });
-              }
-              nextStepId = currentStep.id; // Fica no mesmo passo
-            } else {
-              // Max retries atingido → encerrar como falha
-              nextStepId = null;
+          // Resposta não esperada — tenta retry ou fica aguardando
+          const maxR = config.maxRetries || 0;
+          const retryCount = loopCounters[currentStep.id] || 0;
+          if (maxR > 0 && retryCount < maxR && config.retryMessage) {
+            // Reenviar pergunta
+            loopCounters[currentStep.id] = retryCount + 1;
+            if (evolutionClient) {
+              await evolutionClient.sendText({ number: session.customerPhone, text: config.retryMessage });
             }
+            nextStepId = currentStep.id; // Fica no mesmo passo aguardando
+          } else if (currentStep.altNextStepId) {
+            nextStepId = currentStep.altNextStepId; // Caminho alternativo
+          } else {
+            nextStepId = currentStep.id; // Fica aguardando (não encerra!)
           }
         }
       } else if (currentStep.type === "CONDITION") {
@@ -915,7 +911,7 @@ export class FlowEngine {
       // Status pending ou in_process → ainda aguardando
       return { success: true, delivered: false };
     } catch (error) {
-      console.error("[DELIVER-ERR]", error.message || error, error.stack?.split("\n")[1] || "");
+      const err = error as any; console.error("[DELIVER-ERR]", err.message || err, err.stack?.split("\n")?.[1] || "");
       return { success: false, delivered: false };
     }
   }
