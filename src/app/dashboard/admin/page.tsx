@@ -12,7 +12,7 @@ export default async function AdminPage() {
   if (role !== "owner") redirect("/dashboard");
 
   const tenants = await prisma.tenant.findMany({
-    include: { users: { select: { email: true, name: true } }, _count: { select: { sales: true, flows: true } } },
+    include: { users: { select: { email: true, name: true, role: true } }, _count: { select: { sales: true, flows: true } } },
     orderBy: { createdAt: "desc" },
   });
 

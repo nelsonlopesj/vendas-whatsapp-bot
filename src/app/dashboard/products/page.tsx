@@ -11,6 +11,7 @@ interface Product {
   price: number;
   description: string | null;
   fileUrl: string;
+  extraFiles?: any;
   active: boolean;
   _count: { sales: number };
 }
