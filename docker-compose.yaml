@@ -17,6 +17,11 @@ services:
       UPLOAD_DIR: /app/public/uploads
       EZFLOW_WA_URL: http://evolution:8080
       EZFLOW_WA_KEY: ${EVOLUTION_API_KEY}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+      STRIPE_PRICE_ID: ${STRIPE_PRICE_ID}
     volumes:
       - uploads:/app/public/uploads
     depends_on:

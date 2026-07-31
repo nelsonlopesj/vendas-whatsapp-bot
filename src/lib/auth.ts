@@ -2,6 +2,7 @@ import { PrismaAdapter } from "@next-auth/prisma-adapter";
 import { compare } from "bcryptjs";
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import prisma from "./prisma";
 
 export const authOptions: NextAuthOptions = {
@@ -11,6 +12,10 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
   },
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    }),
     CredentialsProvider({
       name: "credentials",
       credentials: {
@@ -53,11 +58,39 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async signIn({ user }) {
+      // Criar tenant automaticamente para novo usuário Google
+      if (user.email) {
+        const existing = await prisma.user.findUnique({ where: { email: user.email } });
+        if (!existing) {
+          const slug = user.email.split("@")[0].replace(/[^a-z0-9]/g, "-").substring(0, 50);
+          const tenant = await prisma.tenant.create({
+            data: {
+              name: user.name || user.email,
+              slug: `${slug}-${Math.random().toString(36).substring(2, 6)}`,
+              trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            },
+          });
+          await prisma.user.create({
+            data: {
+              email: user.email,
+              name: user.name || user.email.split("@")[0],
+              tenantId: tenant.id,
+              role: "admin",
+            },
+          });
+        }
+      }
+      return true;
+    },
     async jwt({ token, user }) {
       if (user) {
-        token.tenantId = (user as any).tenantId;
-        token.tenantSlug = (user as any).tenantSlug;
-        token.role = (user as any).role;
+        const dbUser = await prisma.user.findUnique({ where: { email: user.email! }, include: { tenant: true } });
+        if (dbUser) {
+          token.tenantId = dbUser.tenantId;
+          token.tenantSlug = dbUser.tenant.slug;
+          token.role = dbUser.role;
+        }
       }
       return token;
     },
