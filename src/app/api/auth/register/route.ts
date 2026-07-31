@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
           name: businessName,
           slug: finalSlug,
           whatsappNumber,
+          trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 dias
         },
       });
 

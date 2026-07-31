@@ -1,23 +1,16 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import {
-  ShoppingCart,
-  ArrowLeftRight,
-  Package,
-  TrendingUp,
-  DollarSign,
-  Activity,
-} from "lucide-react";
+import { ShoppingCart, ArrowLeftRight, Package, TrendingUp, DollarSign, Activity } from "lucide-react";
 import Link from "next/link";
+import { TrialBanner } from "@/components/dashboard/trial-banner";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   const tenantId = (session?.user as any)?.tenantId;
+  if (!tenantId) return <div>Erro ao carregar tenant.</div>;
 
-  if (!tenantId) {
-    return <div>Erro ao carregar tenant.</div>;
-  }
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
 
   const [totalSales, totalProducts, activeFlows, recentSales] =
     await Promise.all([
@@ -70,6 +63,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
+      <TrialBanner subscriptionStatus={tenant?.subscriptionStatus || "trial"} trialEndsAt={tenant?.trialEndsAt?.toISOString() || null} />
       {/* Stats */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (

@@ -9,20 +9,24 @@ datasource db {
 
 // ===== MULTI-TENANT =====
 model Tenant {
-  id               String   @id @default(cuid())
-  name             String
-  slug             String   @unique
-  whatsappNumber   String?
-  evolutionUrl     String?
-  evolutionApikey  String?
-  mercadopagoToken String?
-  isActive         Boolean  @default(true)
-  users            User[]
-  products         Product[]
-  flows            Flow[]
-  sales            Sale[]
-  sessions         FlowSession[]
-  createdAt        DateTime @default(now())
+  id                 String    @id @default(cuid())
+  name               String
+  slug               String    @unique
+  whatsappNumber     String?
+  evolutionUrl       String?
+  evolutionApikey    String?
+  mercadopagoToken   String?
+  isActive           Boolean   @default(true)
+  stripeCustomerId   String?
+  subscriptionStatus String    @default("trial")
+  subscriptionEndsAt DateTime?
+  trialEndsAt        DateTime?
+  users              User[]
+  products           Product[]
+  flows              Flow[]
+  sales              Sale[]
+  sessions           FlowSession[]
+  createdAt          DateTime  @default(now())
   updatedAt        DateTime @updatedAt
 }
 
