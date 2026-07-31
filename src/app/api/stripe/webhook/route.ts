@@ -8,7 +8,7 @@ export async function POST(req: NextRequest) {
   const body = await req.text();
   const sig = req.headers.get("stripe-signature") || "";
 
-  let event: Stripe.Event;
+  let event: any;
   try {
     event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
   } catch {
@@ -18,24 +18,18 @@ export async function POST(req: NextRequest) {
   try {
     switch (event.type) {
       case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        const tenantId = session.metadata?.tenantId;
+        const tenantId = event.data?.object?.metadata?.tenantId;
         if (tenantId) {
           await prisma.tenant.update({
             where: { id: tenantId },
-            data: {
-              subscriptionStatus: "active",
-              subscriptionEndsAt: null,
-              trialEndsAt: null,
-            },
+            data: { subscriptionStatus: "active", subscriptionEndsAt: null, trialEndsAt: null },
           });
         }
         break;
       }
       case "customer.subscription.deleted": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const customerId = subscription.customer as string;
-        const tenant = await prisma.tenant.findFirst({ where: { stripeCustomerId: customerId } });
+        const customerId = event.data?.object?.customer;
+        const tenant = await prisma.tenant.findFirst({ where: { stripeCustomerId: customerId as string } });
         if (tenant) {
           await prisma.tenant.update({
             where: { id: tenant.id },
