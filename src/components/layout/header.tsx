@@ -1,8 +1,9 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { Bell, Sun, Moon } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 import { useState } from "react";
+import { Notifications } from "./notifications";
 
 export function Header() {
   const { data: session } = useSession();
@@ -14,33 +15,22 @@ export function Header() {
   };
 
   return (
-    <header className="flex items-center justify-between h-16 px-6 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-10">
+    <header className="flex items-center justify-between h-16 px-3 lg:px-6 border-b border-border bg-background/80 backdrop-blur-sm sticky top-0 z-10">
       <div>
-        <h1 className="text-lg font-semibold text-foreground">
+        <h1 className="text-base lg:text-lg font-semibold text-foreground">
           Olá, {session?.user?.name?.split(" ")[0] || "bem-vindo"} 👋
         </h1>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 lg:gap-2">
         <button
           onClick={toggleDark}
           className="p-2 rounded-lg hover:bg-secondary transition-colors"
           title={dark ? "Modo claro" : "Modo escuro"}
         >
-          {dark ? (
-            <Sun className="w-4 h-4" />
-          ) : (
-            <Moon className="w-4 h-4" />
-          )}
+          {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
-
-        <button
-          className="p-2 rounded-lg hover:bg-secondary transition-colors relative"
-          title="Notificações"
-        >
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-destructive" />
-        </button>
+        <Notifications />
       </div>
     </header>
   );
