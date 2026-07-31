@@ -221,6 +221,9 @@ export class FlowEngine {
     let nextId: string | null = firstStep?.id || null;
 
     while (currentStep && evolutionClient) {
+      // Parar ANTES de executar passos que dependem de interação externa
+      if (currentStep.type === "WAIT_RESPONSE" || currentStep.type === "GENERATE_PIX") break;
+
       const result = await FlowEngine.executeStep(
         currentStep as FlowStepData,
         { ...session, variables: allVars },
@@ -234,8 +237,6 @@ export class FlowEngine {
       lastStatus = result.status;
       nextId = result.nextStepId;
 
-      // Parar se for passo interativo (espera resposta ou PIX)
-      if (currentStep.type === "WAIT_RESPONSE" || currentStep.type === "GENERATE_PIX") break;
       // Parar se não tem próximo
       if (!result.nextStepId) break;
       // Ir pro próximo

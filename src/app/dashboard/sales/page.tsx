@@ -143,7 +143,7 @@ export default function SalesPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
-                      {new Date(sale.createdAt).toLocaleDateString("pt-BR")}
+                      {new Date(sale.createdAt).toLocaleDateString("pt-BR")} {new Date(sale.createdAt).toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}
                     </td>
                   </tr>
                 ))}
