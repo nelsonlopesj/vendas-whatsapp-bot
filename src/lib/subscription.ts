@@ -8,6 +8,10 @@ export async function checkSubscription(tenantId: string): Promise<{
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
   if (!tenant) return { allowed: false, status: "error", reason: "Tenant não encontrado" };
 
+  // Master/owner nunca expira
+  const owner = await prisma.user.findFirst({ where: { tenantId, role: "owner" } });
+  if (owner) return { allowed: true, status: "master" };
+
   // Assinatura ativa
   if (tenant.subscriptionStatus === "active") {
     return { allowed: true, status: "active" };

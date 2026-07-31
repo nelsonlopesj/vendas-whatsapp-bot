@@ -63,7 +63,9 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <TrialBanner subscriptionStatus={tenant?.subscriptionStatus || "trial"} trialEndsAt={tenant?.trialEndsAt?.toISOString() || null} />
+      {(session?.user as any)?.role !== "owner" && (
+        <TrialBanner subscriptionStatus={tenant?.subscriptionStatus || "trial"} trialEndsAt={tenant?.trialEndsAt?.toISOString() || null} />
+      )}
       {/* Stats */}
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (
