@@ -261,13 +261,12 @@ export class FlowEngine {
           tenantId: session.tenantId,
           customerPhone: session.customerPhone,
           customerName: session.customerName,
-          currentStepId: result.nextStepId,
-          status: result.status,
-          variables: result.variables,
+          currentStepId: nextId,
+          status: lastStatus as FlowSession["status"],
+          variables: allVars,
           loopCounters,
-          currentPixId: result.pixId || null,
+          currentPixId: pixId || null,
         },
-        response: result.response,
       };
     }
 
@@ -281,7 +280,7 @@ export class FlowEngine {
         customerPhone: session.customerPhone,
         customerName: session.customerName || undefined,
         status: "active",
-        variables: {},
+        variables: productVars,
         loopCounters: {},
       },
     };
