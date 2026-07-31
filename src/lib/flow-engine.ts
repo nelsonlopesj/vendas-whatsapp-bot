@@ -842,21 +842,23 @@ export class FlowEngine {
 
         // Se tem sessão ativa, entregar produto
         const session = sale.session;
+        console.log(`[DELIVER] session=${session?.id} status=${session?.status}`);
         if (session && session.status === "waiting_pix") {
           const metadata = sale.metadata as any;
           const deliverStepId = metadata?.nextStepId;
+          console.log(`[DELIVER] metadata=${JSON.stringify(metadata)}`);
 
-          // Usar env vars globais (não mais per-tenant)
           const waUrl = process.env.EZFLOW_WA_URL || "http://evolution:8080";
           const waKey = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
 
-          // Encontrar o passo de entrega (DELIVER_PRODUCT) se nextStepId não estiver definido
           const steps = session.flow?.steps || [];
           let deliverStep = deliverStepId ? steps.find((s: any) => s.id === deliverStepId) : null;
+          console.log(`[DELIVER] deliverStepId=${deliverStepId} foundById=${!!deliverStep} stepsCount=${steps.length}`);
+
           if (!deliverStep) {
-            // Procurar pelo primeiro DELIVER_PRODUCT após o passo atual
             const currentStep = steps.find((s: any) => s.id === session.currentStepId);
             deliverStep = steps.find((s: any) => s.type === "DELIVER_PRODUCT" && (!currentStep || s.order >= currentStep.order));
+            console.log(`[DELIVER] fallback search: currentStep=${currentStep?.type} deliverFound=${!!deliverStep}`);
           }
 
           if (deliverStep) {
@@ -866,6 +868,7 @@ export class FlowEngine {
               instance: "default",
             });
 
+            console.log(`[DELIVER] executing delivery step ${deliverStep.type}...`);
             await FlowEngine.executeStep(
               deliverStep as FlowStepData,
               session,
@@ -912,7 +915,7 @@ export class FlowEngine {
       // Status pending ou in_process → ainda aguardando
       return { success: true, delivered: false };
     } catch (error) {
-      console.error("FlowEngine handlePixPayment error:", error);
+      console.error("[DELIVER-ERR]", error.message || error, error.stack?.split("\n")[1] || "");
       return { success: false, delivered: false };
     }
   }
