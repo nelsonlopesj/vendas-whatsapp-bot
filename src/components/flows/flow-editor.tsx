@@ -130,8 +130,23 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
 
   const selectedStep = steps.find((s) => s.id === selectedStepId);
+
+  // Drag and drop handlers
+  const handleDragStart = (idx: number) => { setDragIdx(idx); };
+  const handleDragOver = (e: React.DragEvent, idx: number) => { e.preventDefault(); setDragOverIdx(idx); };
+  const handleDrop = (idx: number) => {
+    if (dragIdx === null || dragIdx === idx) { setDragIdx(null); setDragOverIdx(null); return; }
+    const newSteps = [...steps];
+    const [moved] = newSteps.splice(dragIdx, 1);
+    newSteps.splice(idx, 0, moved);
+    setSteps(newSteps.map((s, i) => ({ ...s, order: i + 1 })));
+    setDragIdx(null); setDragOverIdx(null);
+  };
+  const handleDragEnd = () => { setDragIdx(null); setDragOverIdx(null); };
 
   // Carregar fluxo existente ao editar
   useEffect(() => {
@@ -445,9 +460,16 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
 
                     {/* Step card */}
                     <div
+                      draggable
+                      onDragStart={() => handleDragStart(idx)}
+                      onDragOver={(e) => handleDragOver(e, idx)}
+                      onDrop={() => handleDrop(idx)}
+                      onDragEnd={handleDragEnd}
                       onClick={() => setSelectedStepId(step.id)}
                       className={clsx(
                         "w-80 px-4 py-3 rounded-xl border-2 cursor-pointer transition-all",
+                        dragIdx === idx && "opacity-50",
+                        dragOverIdx === idx && dragOverIdx !== dragIdx && "border-dashed border-primary/50 bg-primary/5",
                         isSelected
                           ? "border-primary shadow-lg shadow-primary/10"
                           : "border-border hover:border-primary/30"
