@@ -551,7 +551,8 @@ export class FlowEngine {
         const tenant = await prisma.tenant.findUnique({
           where: { id: tenantId },
         });
-        if (!tenant?.mercadopagoToken) {
+        const token = tenant?.mercadopagoToken || "";
+        if (!token) {
           return {
             nextStepId: step.altNextStepId || null,
             status: "failed",
