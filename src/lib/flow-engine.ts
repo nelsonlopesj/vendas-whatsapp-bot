@@ -636,7 +636,7 @@ export class FlowEngine {
             variables,
             loopCounters,
             pixId: pix.id,
-            response: pixText,
+            response: pix.pixCopyPaste,
           };
         } catch (err: any) {
           console.error("Mercado Pago error:", err);
