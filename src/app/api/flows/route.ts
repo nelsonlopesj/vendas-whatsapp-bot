@@ -34,6 +34,15 @@ export async function POST(req: NextRequest) {
   try {
     const { name, triggerKeyword, triggerMode, steps } = await req.json();
 
+    // Verificar assinatura
+    const { canCreateFlow } = await import("@/lib/subscription");
+    if (!(await canCreateFlow(tenantId))) {
+      return NextResponse.json(
+        { error: "Trial expirado ou limite de fluxos atingido. Assine para continuar." },
+        { status: 402 }
+      );
+    }
+
     if (!name || !triggerKeyword) {
       return NextResponse.json(
         { error: "Nome e keyword são obrigatórios" },

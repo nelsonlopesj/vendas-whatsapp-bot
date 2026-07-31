@@ -35,6 +35,11 @@ export async function POST(req: NextRequest) {
     let processed = false;
 
     for (const tenant of tenants) {
+      // Verificar assinatura
+      const { checkSubscription } = await import("@/lib/subscription");
+      const sub = await checkSubscription(tenant.id);
+      if (!sub.allowed) continue; // pula tenant sem assinatura
+
       // Sessão ativa para este tenant?
       const session = await prisma.flowSession.findFirst({
         where: {
