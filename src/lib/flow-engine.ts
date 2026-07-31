@@ -223,6 +223,17 @@ export class FlowEngine {
         flow.steps as FlowStepData[]
       );
 
+      // Atualizar currentStepId no banco
+      await prisma.flowSession.update({
+        where: { id: session.id },
+        data: {
+          currentStepId: result.nextStepId,
+          status: result.status,
+          variables: { ...productVars, ...result.variables },
+          currentPixId: result.pixId || null,
+        },
+      });
+
       const loopCounters: Record<string, number> = {};
       return {
         action: "new_session",
