@@ -39,6 +39,8 @@ model User {
   name          String?
   password      String?   // bcrypt hash
   role          String    @default("owner") // owner | admin | operator
+  resetToken    String?
+  resetTokenExp DateTime?
   emailVerified DateTime?
   image         String?
   accounts      Account[]
