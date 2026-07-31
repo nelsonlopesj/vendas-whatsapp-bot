@@ -252,24 +252,23 @@ export class FlowEngine {
         currentPixId: pixId || null,
       },
     });
-    }
 
     const loopCounters: Record<string, number> = {};
-      return {
-        action: "new_session",
-        session: {
-          id: session.id,
-          flowId: session.flowId,
-          tenantId: session.tenantId,
-          customerPhone: session.customerPhone,
-          customerName: session.customerName,
-          currentStepId: nextId,
-          status: lastStatus as FlowSession["status"],
-          variables: allVars,
-          loopCounters,
-          currentPixId: pixId || null,
-        },
-      };
+    return {
+      action: "new_session",
+      session: {
+        id: session.id,
+        flowId: session.flowId,
+        tenantId: session.tenantId,
+        customerPhone: session.customerPhone,
+        customerName: session.customerName,
+        currentStepId: nextId,
+        status: lastStatus as FlowSession["status"],
+        variables: allVars,
+        loopCounters,
+        currentPixId: pixId || null,
+      },
+    };
     }
 
     return {
