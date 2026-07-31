@@ -681,19 +681,24 @@ export class FlowEngine {
           try {
             const fullUrl = fileUrl.startsWith("http")
               ? fileUrl
-              : `${process.env.NEXTAUTH_URL || "http://localhost:3000"}${fileUrl}`;
-            await evolutionClient.sendDocument(
-              phone,
-              fullUrl,
-              productName
-            );
+              : `https://ezflow.com.br${fileUrl}`;
+            // Detectar tipo de mídia pela extensão
+            const ext = (fileUrl.split(".").pop() || "").toLowerCase();
+            const mediaType =
+              ext === "mp3" || ext === "m4a" || ext === "ogg" || ext === "wav" ? "audio" :
+              ext === "mp4" || ext === "avi" || ext === "mov" ? "video" :
+              ext === "jpg" || ext === "jpeg" || ext === "png" || ext === "gif" ? "image" :
+              "document";
+            await evolutionClient.sendMedia({
+              number: phone,
+              mediaType: mediaType as "audio" | "video" | "image" | "document",
+              mediaUrl: fullUrl,
+              fileName: productName,
+              caption: `📎 ${productName}`,
+            });
           } catch (err) {
             console.error("Failed to send file:", err);
-            // Se falhar envio do arquivo, enviar link
-            await evolutionClient.sendText({
-              number: phone,
-              text: `📎 Link para download: ${fileUrl}`,
-            });
+            await evolutionClient.sendText({ number: phone, text: `📎 Link: ${fileUrl.startsWith("http") ? fileUrl : `https://ezflow.com.br${fileUrl}`}` });
           }
         }
 
