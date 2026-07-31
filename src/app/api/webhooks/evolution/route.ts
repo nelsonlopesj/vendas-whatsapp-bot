@@ -45,21 +45,26 @@ export async function POST(req: NextRequest) {
       });
 
       if (session) {
-        await FlowEngine.processIncoming(phone, message, tenant.id, pushName, evolutionClient);
-        await prisma.messageLog.create({
-          data: {
-            tenantId: tenant.id,
-            sessionId: session.id,
-            customerPhone: phone,
-            direction: "inbound",
-            type: "text",
-            content: message,
-            wamId: messageId,
-            status: "received",
-          },
-        });
-        processed = true;
-        break;
+        const result = await FlowEngine.processIncoming(phone, message, tenant.id, pushName, evolutionClient);
+        // Só marca como processado se a sessão ainda está ativa ou waiting_pix
+        // Se foi completada/timed_out, deixa cair no keyword match abaixo
+        if (result.action !== "no_match" && result.session?.status !== "completed" && result.session?.status !== "timed_out") {
+          await prisma.messageLog.create({
+            data: {
+              tenantId: tenant.id,
+              sessionId: session.id,
+              customerPhone: phone,
+              direction: "inbound",
+              type: "text",
+              content: message,
+              wamId: messageId,
+              status: "received",
+            },
+          });
+          processed = true;
+          break;
+        }
+        console.log(`[WA-SESSION] old session closed, trying keyword match for "${message}"`);
       }
     }
 
