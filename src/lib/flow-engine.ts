@@ -205,6 +205,7 @@ export class FlowEngine {
           productVars["product.name"] = product.name;
           productVars["product.price"] = String(product.price);
           productVars["product.fileUrl"] = product.fileUrl || "";
+          productVars["product.extraFiles"] = JSON.stringify(product.extraFiles || []);
         }
       }
     }
@@ -682,32 +683,18 @@ export class FlowEngine {
           text: `✅ *Pagamento confirmado!*\n\n${deliveryMsg}`,
         });
 
-        // Enviar arquivo se tiver URL
-        if (fileUrl) {
-          try {
-            const fullUrl = fileUrl.startsWith("http")
-              ? fileUrl
-              : `http://portal:3000${fileUrl}`;
-            // Detectar tipo de mídia pela extensão
-            const ext = (fileUrl.split(".").pop() || "").toLowerCase();
-            const mediaType =
-              ext === "mp3" || ext === "m4a" || ext === "ogg" || ext === "wav" ? "audio" :
-              ext === "mp4" || ext === "avi" || ext === "mov" ? "video" :
-              ext === "jpg" || ext === "jpeg" || ext === "png" || ext === "gif" ? "image" :
-              "document";
-            await evolutionClient.sendMedia({
-              number: phone,
-              mediaType: mediaType as "audio" | "video" | "image" | "document",
-              mediaUrl: fullUrl,
-              fileName: productName,
-              caption: `📎 ${productName}`,
-            });
-          } catch (err) {
-            console.error("Failed to send file:", err);
-            const publicUrl = fileUrl.startsWith("http") ? fileUrl : `https://ezflow.com.br${fileUrl}`;
-            await evolutionClient.sendText({ number: phone, text: `📎 Link: ${publicUrl}` });
-          }
-        }
+        // Enviar arquivo(s)
+        const sendOne = async (url: string, name: string) => {
+          const full = url.startsWith("http") ? url : `http://portal:3000${url}`;
+          const ext = (url.split(".").pop() || "").toLowerCase();
+          const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov"].includes(ext) ? "video" : ["jpg","jpeg","png","gif"].includes(ext) ? "image" : "document";
+          try { await evolutionClient.sendMedia({ number: phone, mediaType: type as any, mediaUrl: full, fileName: name, caption: `📎 ${name}` }); } catch {}
+        };
+        const filesToSend: { url: string; name: string }[] = [];
+        if (fileUrl) filesToSend.push({ url: fileUrl, name: productName });
+        // Extra files do produto
+        try { const extra = JSON.parse(variables["product.extraFiles"] || "[]"); (extra as any[]).forEach((f: any) => filesToSend.push({ url: f.url, name: f.name || "Arquivo" })); } catch {}
+        for (const f of filesToSend) { await sendOne(f.url, f.name); }
 
         // Atualizar venda como entregue
         await prisma.sale.updateMany({

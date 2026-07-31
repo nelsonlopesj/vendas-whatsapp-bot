@@ -64,6 +64,7 @@ model Product {
   fileUrl     String   // URL do arquivo (PDF, MP3, etc.)
   fileSize    Int?     // Tamanho em bytes
   fileType    String?  // MIME type
+  extraFiles  Json      @default("[]") // Arquivos adicionais [{url, name}]
   active      Boolean  @default(true)
   sales       Sale[]
   flowSteps   FlowStep[]
