@@ -152,6 +152,10 @@ export default function ProductsPage() {
                 <label className="block text-xs font-medium mb-1">Preço (R$)</label>
                 <input type="number" step="0.01" value={editForm.price} onChange={e => setEditForm({...editForm, price: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm" />
               </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">URL do Arquivo</label>
+                <input type="text" value={editForm.fileUrl} onChange={e => setEditForm({...editForm, fileUrl: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm text-muted-foreground" />
+              </div>
               <button onClick={saveEdit} disabled={saving} className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50">
                 <Save className="w-4 h-4" /> {saving ? "Salvando..." : "Salvar"}
               </button>

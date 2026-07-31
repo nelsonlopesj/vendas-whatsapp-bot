@@ -844,28 +844,34 @@ export class FlowEngine {
           const metadata = sale.metadata as any;
           const deliverStepId = metadata?.nextStepId;
 
-          if (deliverStepId && tenant.evolutionUrl && tenant.evolutionApikey) {
+          // Usar env vars globais (não mais per-tenant)
+          const waUrl = process.env.EZFLOW_WA_URL || "http://evolution:8080";
+          const waKey = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
+
+          // Encontrar o passo de entrega (DELIVER_PRODUCT) se nextStepId não estiver definido
+          const steps = session.flow?.steps || [];
+          let deliverStep = deliverStepId ? steps.find((s: any) => s.id === deliverStepId) : null;
+          if (!deliverStep) {
+            // Procurar pelo primeiro DELIVER_PRODUCT após o passo atual
+            const currentStep = steps.find((s: any) => s.id === session.currentStepId);
+            deliverStep = steps.find((s: any) => s.type === "DELIVER_PRODUCT" && (!currentStep || s.order >= currentStep.order));
+          }
+
+          if (deliverStep) {
             const evolutionClient = new EvolutionClient({
-              baseUrl: tenant.evolutionUrl,
-              apikey: tenant.evolutionApikey,
+              baseUrl: waUrl,
+              apikey: waKey,
               instance: "default",
             });
 
-            const steps = session.flow?.steps || [];
-            const deliverStep = steps.find(
-              (s: any) => s.id === deliverStepId
+            await FlowEngine.executeStep(
+              deliverStep as FlowStepData,
+              session,
+              session.customerPhone,
+              tenantId,
+              evolutionClient,
+              steps as FlowStepData[]
             );
-
-            if (deliverStep) {
-              await FlowEngine.executeStep(
-                deliverStep as FlowStepData,
-                session,
-                session.customerPhone,
-                tenantId,
-                evolutionClient,
-                steps as FlowStepData[]
-              );
-            }
 
             // Atualizar sessão
             await prisma.flowSession.update({
