@@ -51,8 +51,11 @@ export async function DELETE(
     return NextResponse.json({ error: "Produto não encontrado" }, { status: 404 });
   }
 
-  // Deletar vendas associadas primeiro
-  await prisma.sale.deleteMany({ where: { productId: id } });
+  // Verificar se tem vendas — impedir delete se tiver
+  const salesCount = await prisma.sale.count({ where: { productId: id } });
+  if (salesCount > 0) {
+    return NextResponse.json({ error: `Este produto tem ${salesCount} venda(s). Remova as vendas primeiro ou desative o produto.` }, { status: 400 });
+  }
   await prisma.flowStep.updateMany({ where: { productId: id }, data: { productId: null } });
   await prisma.product.delete({ where: { id } });
   return NextResponse.json({ success: true });
