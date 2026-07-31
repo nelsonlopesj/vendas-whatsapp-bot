@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import Stripe from "stripe";
 import prisma from "@/lib/prisma";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
-
 export async function POST(req: NextRequest) {
+  const Stripe = (await import("stripe")).default;
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
   const session = await getServerSession(authOptions);
   const tenantId = (session?.user as any)?.tenantId;
   const userEmail = session?.user?.email || "";
