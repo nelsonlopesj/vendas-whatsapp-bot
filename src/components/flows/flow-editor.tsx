@@ -694,6 +694,7 @@ function StepConfigPanel({
 
       {/* Passo alternativo — só para CONDITION e WAIT_RESPONSE */}
       {(step.type === "CONDITION" || step.type === "WAIT_RESPONSE") && (
+        <>
         <div>
           <label className="block text-xs font-medium mb-1">
             Próximo se SIM / OK
@@ -728,6 +729,7 @@ function StepConfigPanel({
               ))}
           </select>
         </div>
+        </>
       )}
 
       {/* Configs específicas por tipo */}
