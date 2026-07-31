@@ -710,7 +710,10 @@ function StepConfigPanel({
   const config = step.config;
   const [products, setProducts] = useState<Array<{ id: string; name: string; price: number; keyword: string }>>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
+  const [expectedRaw, setExpectedRaw] = useState<string | null>(null);
   useEffect(() => { fetch("/api/products").then(r => r.json()).then(d => { setProducts(d.products || []); setProductsLoaded(true); }).catch(() => setProductsLoaded(true)); }, []);
+  // Sincronizar raw text com config quando muda de step
+  useEffect(() => { setExpectedRaw(null); }, [step.id]);
 
   return (
     <div className="space-y-4">
@@ -793,15 +796,8 @@ function StepConfigPanel({
             </label>
             <input
               type="text"
-              value={(config.expected || []).join(", ")}
-              onChange={(e) =>
-                onUpdateConfig({
-                  expected: e.target.value
-                    .split(",")
-                    .map((s: string) => s.trim().toLowerCase())
-                    .filter(Boolean),
-                })
-              }
+              value={expectedRaw !== null ? expectedRaw : (config.expected || []).join(", ")}
+              onChange={(e) => { setExpectedRaw(e.target.value); onUpdateConfig({ expected: e.target.value.split(",").map((s: string) => s.trim().toLowerCase()).filter(Boolean) }); }}
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="sim, quero, yes"
             />

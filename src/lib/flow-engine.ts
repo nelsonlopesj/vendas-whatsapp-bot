@@ -212,27 +212,45 @@ export class FlowEngine {
     // Atualizar objeto local para o executeStep usar as variáveis
     (session as any).variables = productVars;
 
-    // Executar o primeiro passo
-    if (firstStep && evolutionClient) {
+    // Executar passos em sequência até chegar em interação ou fim
+    let currentStep = firstStep;
+    let allVars = { ...productVars };
+    let pixId: string | undefined;
+    let lastStatus = "active";
+    let nextId: string | null = firstStep?.id || null;
+
+    while (currentStep && evolutionClient) {
       const result = await FlowEngine.executeStep(
-        firstStep as FlowStepData,
-        session,
+        currentStep as FlowStepData,
+        { ...session, variables: allVars },
         phone,
         tenantId,
         evolutionClient,
         flow.steps as FlowStepData[]
       );
+      allVars = { ...allVars, ...result.variables };
+      pixId = result.pixId || pixId;
+      lastStatus = result.status;
+      nextId = result.nextStepId;
 
-      // Atualizar currentStepId no banco
-      await prisma.flowSession.update({
-        where: { id: session.id },
-        data: {
-          currentStepId: result.nextStepId,
-          status: result.status,
-          variables: { ...productVars, ...result.variables },
-          currentPixId: result.pixId || null,
-        },
-      });
+      // Parar se for passo interativo (espera resposta ou PIX)
+      if (currentStep.type === "WAIT_RESPONSE" || currentStep.type === "GENERATE_PIX") break;
+      // Parar se não tem próximo
+      if (!result.nextStepId) break;
+      // Ir pro próximo
+      currentStep = flow.steps?.find((s: any) => s.id === result.nextStepId);
+    }
+
+    // Atualizar currentStepId no banco
+    await prisma.flowSession.update({
+      where: { id: session.id },
+      data: {
+        currentStepId: nextId,
+        status: lastStatus,
+        variables: allVars,
+        currentPixId: pixId || null,
+      },
+    });
 
       const loopCounters: Record<string, number> = {};
       return {
