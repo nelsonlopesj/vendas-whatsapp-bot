@@ -567,11 +567,28 @@ export class FlowEngine {
           });
 
           // Enviar PIX para o cliente
-          const pixText = `💳 *Pagamento via PIX*\n\n📦 *Produto:* ${description}\n💰 *Valor:* R$ ${price.toFixed(2)}\n\n*PIX Copia e Cola:*\n\`\`\`${pix.pixCopyPaste}\`\`\`\n\n⏰ *Vence em:* ${config.expirationMinutes || 30} minutos\n\nCopie o código acima e cole no app do seu banco.`;
+          // Enviar resumo primeiro
           await evolutionClient.sendText({
             number: phone,
-            text: pixText,
+            text: `💳 *Pagamento via PIX*\n\n📦 *Produto:* ${description}\n💰 *Valor:* R$ ${price.toFixed(2)}\n⏰ *Vence em:* ${config.expirationMinutes || 30} minutos`,
           });
+          // Enviar código PIX isolado para fácil cópia
+          await evolutionClient.sendText({
+            number: phone,
+            text: pix.pixCopyPaste,
+          });
+
+          // Iniciar polling de status do PIX (backup, webhook é primary)
+          setTimeout(async () => {
+            try {
+              await FlowEngine.handlePixPayment(pix.id, tenantId);
+            } catch {}
+          }, 10000); // verifica após 10 segundos
+          setTimeout(async () => {
+            try {
+              await FlowEngine.handlePixPayment(pix.id, tenantId);
+            } catch {}
+          }, 30000); // verifica novamente após 30 segundos
 
           // Registrar venda
           await prisma.sale.create({
@@ -685,6 +702,18 @@ export class FlowEngine {
         // Aqui apenas avança (não deve acontecer — CONDITION sempre segue WAIT_RESPONSE)
         return {
           nextStepId: step.nextStepId || allSteps.find(s => s.order === step.order + 1)?.id || null,
+          status: "active",
+          variables,
+          loopCounters,
+        };
+      }
+
+      case "DELAY": {
+        const seconds = config.seconds || 2;
+        await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+        const nextByOrder = allSteps.find(s => s.order === step.order + 1);
+        return {
+          nextStepId: step.nextStepId || nextByOrder?.id || null,
           status: "active",
           variables,
           loopCounters,

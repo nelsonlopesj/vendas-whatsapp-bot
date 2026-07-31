@@ -79,6 +79,15 @@ const STEP_TYPES = [
     colorText: "text-red-500",
     description: "Repete passos anteriores (com limite)",
   },
+  {
+    type: "DELAY",
+    label: "Delay",
+    icon: Clock,
+    color: "bg-slate-500",
+    colorLight: "bg-slate-500/10",
+    colorText: "text-slate-500",
+    description: "Pausa entre mensagens (parece mais natural)",
+  },
 ];
 
 const EXIT_NODES = [
@@ -651,6 +660,8 @@ function getDefaultConfig(type: string): Record<string, any> {
         backToStepIndex: 0,
         exitCondition: "",
       };
+    case "DELAY":
+      return { seconds: 2 };
     default:
       return {};
   }
@@ -984,6 +995,25 @@ function StepConfigPanel({
             </p>
           </div>
         </>
+      )}
+
+      {step.type === "DELAY" && (
+        <div>
+          <label className="block text-xs font-medium mb-1">
+            Pausa (segundos)
+          </label>
+          <input
+            type="number"
+            value={config.seconds || 2}
+            onChange={(e) => onUpdateConfig({ seconds: parseInt(e.target.value) || 2 })}
+            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            min="1"
+            max="10"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Intervalo entre mensagens (1-10s). Evita bloqueios do WhatsApp.
+          </p>
+        </div>
       )}
     </div>
   );
