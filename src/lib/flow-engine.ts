@@ -333,11 +333,16 @@ export class FlowEngine {
     let nextStepId: string | null = null;
     let responseText: string | undefined;
 
+    if (currentStep.type === "GENERATE_PIX") {
+      // Aguardando pagamento — não avança
+      return { action: "continue_session" };
+    }
+
     if (
       currentStep.type === "WAIT_RESPONSE" ||
       currentStep.type === "CONDITION"
     ) {
-      const config = currentStep.config || {};
+      const config = (currentStep.config || {}) as Record<string, any>;
 
       if (currentStep.type === "WAIT_RESPONSE") {
         // Salvar resposta na variável
