@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Plus, Package, Trash2, Pencil, DollarSign, Hash, X, Save } from "lucide-react";
+import { Plus, Package, Trash2, Pencil, DollarSign, Hash, X, Save, EyeOff, Eye } from "lucide-react";
 
 interface Product {
   id: string;
@@ -34,9 +34,16 @@ export default function ProductsPage() {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
-  const deleteProduct = async (id: string, name: string) => {
-    if (!confirm(`Deletar "${name}"?`)) return;
-    await fetch(`/api/products/${id}`, { method: "DELETE" });
+  const deleteProduct = async (id: string, name: string, hasSales: boolean) => {
+    if (hasSales) { alert("Este produto tem vendas. Desative-o em vez de excluir."); return; }
+    if (!confirm(`Deletar "${name}"? Esta ação é permanente.`)) return;
+    const res = await fetch(`/api/products/${id}`, { method: "DELETE" });
+    if (!res.ok) { const d = await res.json(); alert(d.error || "Erro ao deletar"); return; }
+    fetchProducts();
+  };
+
+  const toggleActive = async (id: string, active: boolean) => {
+    await fetch(`/api/products/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !active }) });
     fetchProducts();
   };
 
@@ -122,10 +129,14 @@ export default function ProductsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                {!p.active && <span className="text-[10px] bg-amber-500/10 text-amber-600 px-1.5 py-0.5 rounded mr-1">Inativo</span>}
+                <button onClick={() => toggleActive(p.id, p.active)} className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground" title={p.active ? "Desativar" : "Ativar"}>
+                  {p.active ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
                 <button onClick={() => openEdit(p)} className="p-2 rounded-lg hover:bg-secondary transition-colors text-muted-foreground">
                   <Pencil className="w-4 h-4" />
                 </button>
-                <button onClick={() => deleteProduct(p.id, p.name)} className="p-2 rounded-lg hover:bg-red-50 hover:text-red-600 transition-colors text-muted-foreground">
+                <button onClick={() => deleteProduct(p.id, p.name, (p._count?.sales || 0) > 0)} className="p-2 rounded-lg hover:bg-red-50 hover:text-red-600 transition-colors text-muted-foreground">
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
