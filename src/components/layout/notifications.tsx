@@ -17,15 +17,20 @@ export function Notifications() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [unread, setUnread] = useState(0);
 
+  const [lastSeenCount, setLastSeenCount] = useState(0);
+
   const fetchRecent = useCallback(async () => {
     const res = await fetch("/api/sales?limit=5");
     if (res.ok) {
       const data = await res.json();
-      setSales(data.sales || []);
-      const paid = (data.sales || []).filter((s: Sale) => s.status === "PAID").length;
-      setUnread(paid);
+      const allSales = data.sales || [];
+      setSales(allSales);
+      const totalPaid = await fetch("/api/sales?status=PAID&limit=100").then(r => r.json()).then(d => d.total || 0);
+      if (totalPaid > lastSeenCount) {
+        setUnread(totalPaid - lastSeenCount);
+      }
     }
-  }, []);
+  }, [lastSeenCount]);
 
   useEffect(() => {
     fetchRecent();
@@ -56,7 +61,15 @@ export function Notifications() {
   return (
     <div className="relative">
       <button
-        onClick={() => { setOpen(!open); if (open) setUnread(0); }}
+        onClick={async () => {
+          setOpen(!open);
+          if (open) {
+            setUnread(0);
+            const res = await fetch("/api/sales?status=PAID&limit=100");
+            const data = await res.json();
+            setLastSeenCount(data.total || 0);
+          }
+        }}
         className="p-2 rounded-lg hover:bg-secondary transition-colors relative"
         title="Notificações"
       >
