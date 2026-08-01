@@ -228,7 +228,7 @@ export class FlowEngine {
     switch (step.type) {
       case "SEND_MESSAGE": {
         const text = renderTemplate(config.text || "", { ...vars, "customer.name": session.customerName || "Cliente" });
-        try { await evolutionClient.sendText({ number: phone, text }); } catch {}
+        try { await evolutionClient.sendText({ number: phone, text }); } catch (e: any) { console.error("[FLOW] sendText FAILED:", e.message); }
         await prisma.messageLog.create({ data: { tenantId, sessionId: session.id, customerPhone: phone, direction: "outbound", type: "text", content: text } });
         return { nextStepId: nextOrAuto(step.nextStepId), status: "active", vars, response: text };
       }
