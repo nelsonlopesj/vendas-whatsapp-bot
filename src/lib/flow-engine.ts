@@ -8,7 +8,6 @@
 import prisma from "./prisma";
 import { EvolutionClient } from "./evolution";
 import { MercadoPagoClient } from "./mercadopago";
-import { flowTimeoutQueue } from "./queue";
 
 // ===== Tipos =====
 
@@ -337,6 +336,7 @@ export class FlowEngine {
 
     // Cancelar timeout pendente (cliente respondeu)
     try {
+      const { flowTimeoutQueue } = await import("./queue");
       const timeoutJob = await flowTimeoutQueue.getJob(`timeout-${session.id}`);
       if (timeoutJob) {
         await timeoutJob.remove();
@@ -541,10 +541,11 @@ export class FlowEngine {
         // A resposta será processada em continueSession
         variables._waitStartedAt = String(Date.now());
 
-        // Agendar timeout via BullMQ delayed job
+        // Agendar timeout via BullMQ delayed job (lazy import evita circular dependency)
         const timeoutSeconds = config.timeout || 3600;
         const retryCount = loopCounters[step.id] || 0;
         try {
+          const { flowTimeoutQueue } = await import("./queue");
           await flowTimeoutQueue.add(
             "timeout",
             { sessionId: session.id, stepId: step.id, retryCount },
