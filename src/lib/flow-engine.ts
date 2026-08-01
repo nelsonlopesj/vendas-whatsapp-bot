@@ -118,6 +118,7 @@ export class FlowEngine {
     let status: string = dbSession.status || "active";
 
     // Se tem mensagem recebida E o passo atual é interativo, processa a resposta primeiro
+    console.log(`[FLOW] runFlow msg="${incomingMessage}" step=${currentStep?.type}:${currentStep?.order} session=${dbSession.id.slice(-6)}`);
     if (incomingMessage && currentStep && INTERACTIVE.includes(currentStep.type)) {
       const result = await FlowEngine.processInteractiveStep(currentStep, steps, incomingMessage, vars, loopCounters, dbSession, evolutionClient);
       vars = result.vars;
@@ -172,6 +173,7 @@ export class FlowEngine {
     if (step.type === "WAIT_RESPONSE") {
       const varName = config.variable || "resposta";
       vars[varName] = message;
+      console.log(`[FLOW] WAIT_RESPONSE msg="${message}" expected=${JSON.stringify(config.expected)} matched=${matchResponse(message, config.expected || [])}`);
 
       if (matchResponse(message, config.expected || [])) {
         // Resposta esperada → avança
