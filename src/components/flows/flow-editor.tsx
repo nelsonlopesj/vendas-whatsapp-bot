@@ -851,6 +851,23 @@ function StepConfigPanel({
               <option value="retry">Reenviar pergunta</option>
             </select>
           </div>
+          {config.onTimeout === "retry" && (
+            <div>
+              <label className="block text-xs font-medium mb-1">
+                Mensagem de retry
+              </label>
+              <textarea
+                value={config.retryMessage || ""}
+                onChange={(e) => onUpdateConfig({ retryMessage: e.target.value })}
+                rows={2}
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                placeholder="Ainda está aí? Digite SIM para continuar..."
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Enviada quando o cliente não responde dentro do tempo
+              </p>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-medium mb-1">
               Máximo de retentativas
