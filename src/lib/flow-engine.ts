@@ -308,6 +308,7 @@ export class FlowEngine {
     const currentStep = steps.find(
       (s: FlowStepData) => s.id === session.currentStepId
     );
+    console.log(`[FLOW-CONT] msg="${message}" step=${currentStep?.type} sessionId=${session.id}`);
 
     if (!currentStep) {
       // Fluxo acabou? Finalizar sessão
