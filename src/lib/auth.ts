@@ -8,7 +8,6 @@ import prisma from "./prisma";
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
-  allowDangerousEmailAccountLinking: true,
   pages: {
     signIn: "/login",
   },
@@ -59,28 +58,20 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user }) {
-      // Criar tenant automaticamente para novo usuário Google
+    async signIn({ user, account }) {
       if (user.email) {
         const existing = await prisma.user.findUnique({ where: { email: user.email } });
-        if (!existing) {
-          const slug = user.email.split("@")[0].replace(/[^a-z0-9]/g, "-").substring(0, 50);
-          const tenant = await prisma.tenant.create({
-            data: {
-              name: user.name || user.email,
-              slug: `${slug}-${Math.random().toString(36).substring(2, 6)}`,
-              trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-            },
-          });
-          await prisma.user.create({
-            data: {
-              email: user.email,
-              name: user.name || user.email.split("@")[0],
-              tenantId: tenant.id,
-              role: "admin",
-            },
-          });
+        if (existing) {
+          // Vincular conta Google ao usuário existente
+          if (account && !(await prisma.account.findFirst({ where: { provider: account.provider, providerAccountId: account.providerAccountId } }))) {
+            await prisma.account.create({ data: { userId: existing.id, type: account.type, provider: account.provider, providerAccountId: account.providerAccountId, access_token: account.access_token, refresh_token: account.refresh_token, expires_at: account.expires_at, token_type: account.token_type, scope: account.scope, id_token: account.id_token } });
+          }
+          return true;
         }
+        // Novo usuário Google
+        const slug = user.email.split("@")[0].replace(/[^a-z0-9]/g, "-").substring(0, 50);
+        const tenant = await prisma.tenant.create({ data: { name: user.name || user.email, slug: `${slug}-${Math.random().toString(36).substring(2, 6)}`, trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) } });
+        await prisma.user.create({ data: { email: user.email, name: user.name || user.email.split("@")[0], tenantId: tenant.id, role: "admin" } });
       }
       return true;
     },
