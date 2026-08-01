@@ -433,46 +433,24 @@ export class FlowEngine {
       };
     }
 
-    // Executar o próximo passo
-    const nextStep = steps.find((s: FlowStepData) => s.id === nextStepId);
-    if (nextStep && evolutionClient) {
-      const result = await FlowEngine.executeStep(
-        nextStep,
-        session,
-        session.customerPhone,
-        session.tenantId,
-        evolutionClient,
-        steps
-      );
+    // Executar passos em sequência até chegar em interação ou fim
+    let cs = steps.find((s: FlowStepData) => s.id === nextStepId);
+    while (cs && evolutionClient) {
+      if (cs.type === "WAIT_RESPONSE" || cs.type === "GENERATE_PIX") {
+        // Para e espera input externo
+        await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables, loopCounters } });
+        return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables, loopCounters } };
+      }
 
-      // Atualizar sessão no banco
-      await prisma.flowSession.update({
-        where: { id: session.id },
-        data: {
-          currentStepId: result.nextStepId,
-          status: result.status,
-          variables: { ...variables, ...result.variables },
-          loopCounters: result.loopCounters || loopCounters,
-          currentPixId: result.pixId || null,
-        },
-      });
+      const result = await FlowEngine.executeStep(cs, session, session.customerPhone, session.tenantId, evolutionClient, steps);
+      variables = { ...variables, ...result.variables };
+      if (!result.nextStepId) break;
+      cs = steps.find((s: FlowStepData) => s.id === result.nextStepId) || null;
+    }
 
-      return {
-        action: "continue_session",
-        session: {
-          id: session.id,
-          flowId: session.flowId,
-          tenantId: session.tenantId,
-          currentStepId: result.nextStepId,
-          customerPhone: session.customerPhone,
-          customerName: session.customerName || undefined,
-          status: result.status,
-          variables: { ...variables, ...result.variables },
-          loopCounters: result.loopCounters || loopCounters,
-          currentPixId: result.pixId,
-        },
-        response: result.response,
-      };
+    // Atualizar sessão
+    if (cs?.id) {
+      await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables, loopCounters } });
     }
 
     return { action: "continue_session" };
