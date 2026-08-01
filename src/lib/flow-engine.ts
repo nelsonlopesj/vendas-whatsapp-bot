@@ -413,7 +413,7 @@ export class FlowEngine {
         data: {
           status: "completed",
           completedAt: new Date(),
-          variables,
+          variables: allVars,
           loopCounters,
         },
       });
@@ -427,7 +427,7 @@ export class FlowEngine {
           customerPhone: session.customerPhone,
           customerName: session.customerName || undefined,
           status: "completed",
-          variables,
+          variables: allVars,
           loopCounters,
         },
       };
