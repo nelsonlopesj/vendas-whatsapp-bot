@@ -93,6 +93,38 @@ function matchResponse(
   }
 }
 
+// ===== Timeout Scheduler =====
+
+async function scheduleTimeout(
+  sessionId: string,
+  stepId: string | null,
+  variables: Record<string, string>,
+  loopCounters: Record<string, number>
+) {
+  if (!stepId) return;
+  try {
+    const prisma = (await import("./prisma")).default;
+    const step = await prisma.flowStep.findUnique({ where: { id: stepId } });
+    if (!step || step.type !== "WAIT_RESPONSE") return;
+
+    const config = (step.config || {}) as Record<string, any>;
+    const timeoutSeconds = config.timeout || 3600;
+    const onTimeout = config.onTimeout || "exit";
+    if (onTimeout !== "retry") return;
+
+    const retryCount = loopCounters[stepId] || 0;
+    const { flowTimeoutQueue } = await import("./queue");
+    await flowTimeoutQueue.add(
+      "timeout",
+      { sessionId, stepId, retryCount },
+      { delay: timeoutSeconds * 1000, jobId: `timeout-${sessionId}` }
+    );
+    console.log(`[TIMEOUT] scheduled for session ${sessionId} in ${timeoutSeconds}s (retry ${retryCount})`);
+  } catch (err: any) {
+    console.error(`[TIMEOUT] failed to schedule:`, err.message);
+  }
+}
+
 // ===== Flow Engine =====
 
 export class FlowEngine {
@@ -259,6 +291,9 @@ export class FlowEngine {
         currentPixId: pixId || null,
       },
     });
+
+    // Agendar timeout se parou em WAIT_RESPONSE
+    scheduleTimeout(session.id, nextId, allVars, {});
 
     const loopCounters: Record<string, number> = {};
     return {
@@ -453,6 +488,7 @@ export class FlowEngine {
       if (cs.type === "WAIT_RESPONSE") {
         // WAIT_RESPONSE: pausa e espera input do cliente
         await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: "active", variables: allVars, loopCounters } });
+        scheduleTimeout(session.id, cs.id, allVars, loopCounters);
         return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: "active", variables: allVars, loopCounters } };
       }
 
@@ -538,24 +574,7 @@ export class FlowEngine {
 
       case "WAIT_RESPONSE": {
         // Não envia nada, apenas espera a resposta do cliente
-        // A resposta será processada em continueSession
         variables._waitStartedAt = String(Date.now());
-
-        // Agendar timeout via BullMQ delayed job (lazy import evita circular dependency)
-        const timeoutSeconds = config.timeout || 3600;
-        const retryCount = loopCounters[step.id] || 0;
-        try {
-          const { flowTimeoutQueue } = await import("./queue");
-          await flowTimeoutQueue.add(
-            "timeout",
-            { sessionId: session.id, stepId: step.id, retryCount },
-            { delay: timeoutSeconds * 1000, jobId: `timeout-${session.id}` }
-          );
-          console.log(`[TIMEOUT] scheduled for session ${session.id} in ${timeoutSeconds}s (retry ${retryCount})`);
-        } catch (err: any) {
-          console.error(`[TIMEOUT] failed to schedule for session ${session.id}:`, err.message);
-        }
-
         return {
           nextStepId: step.id, // Aguarda no mesmo passo
           status: "active",
