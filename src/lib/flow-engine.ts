@@ -223,10 +223,10 @@ export class FlowEngine {
 
     while (currentStep && evolutionClient) {
       console.log(`[FLOW-STEP] executing step type=${currentStep.type} label=${currentStep.label}`);
-      // Parar ANTES de executar passos que dependem de interação externa
+      // Parar ANTES de executar WAIT_RESPONSE (depende de resposta do cliente)
       if (currentStep.type === "WAIT_RESPONSE") { console.log("[FLOW-STOP] breaking at WAIT_RESPONSE"); break; }
-      if (currentStep.type === "GENERATE_PIX") { console.log("[FLOW-STOP] breaking at GENERATE_PIX"); break; }
 
+      // GENERATE_PIX: executa e depois pausa
       const result = await FlowEngine.executeStep(
         currentStep as FlowStepData,
         { ...session, variables: allVars },
@@ -239,6 +239,9 @@ export class FlowEngine {
       pixId = result.pixId || pixId;
       lastStatus = result.status;
       nextId = result.nextStepId;
+
+      // Se gerou PIX, pausa para aguardar pagamento
+      if (result.status === "waiting_pix") { console.log("[FLOW-STOP] breaking at GENERATE_PIX (waiting_pix)"); break; }
 
       // Parar se não tem próximo
       if (!result.nextStepId) break;
@@ -436,21 +439,29 @@ export class FlowEngine {
     // Executar passos em sequência até chegar em interação ou fim
     let cs = steps.find((s: FlowStepData) => s.id === nextStepId);
     while (cs && evolutionClient) {
-      if (cs.type === "WAIT_RESPONSE" || cs.type === "GENERATE_PIX") {
-        // Para e espera input externo
-        await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables: allVars, loopCounters } });
-        return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables: allVars, loopCounters } };
+      if (cs.type === "WAIT_RESPONSE") {
+        // WAIT_RESPONSE: pausa e espera input do cliente
+        await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: "active", variables: allVars, loopCounters } });
+        return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: "active", variables: allVars, loopCounters } };
       }
 
+      // GENERATE_PIX e outros: executa normalmente
       const result = await FlowEngine.executeStep(cs, session, session.customerPhone, session.tenantId, evolutionClient, steps);
       allVars = { ...allVars, ...result.variables };
+
+      // Se gerou PIX, salva e pausa para aguardar pagamento
+      if (result.status === "waiting_pix") {
+        await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: result.nextStepId || cs.id, status: "waiting_pix", variables: allVars, loopCounters, currentPixId: result.pixId || null } });
+        return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: result.nextStepId || cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: "waiting_pix", variables: allVars, loopCounters, currentPixId: result.pixId || null } };
+      }
+
       if (!result.nextStepId) break;
       cs = steps.find((s: FlowStepData) => s.id === result.nextStepId) || undefined;
     }
 
     // Atualizar sessão
     if (cs?.id) {
-      await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables: allVars, loopCounters } });
+      await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: "active", variables: allVars, loopCounters } });
     }
 
     return { action: "continue_session" };
