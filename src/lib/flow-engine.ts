@@ -55,6 +55,7 @@ export class FlowEngine {
 
   /** Processa uma mensagem recebida do WhatsApp */
   static async processIncoming(phone: string, message: string, tenantId: string, pushName?: string, evolutionClient?: EvolutionClient) {
+    const log = (msg: string) => console.log(`[PI] ${phone.slice(-6)} ${msg}`);
     try {
       // Buscar sessão ativa
       const session = await prisma.flowSession.findFirst({
@@ -62,15 +63,18 @@ export class FlowEngine {
         include: { flow: { include: { steps: { orderBy: { order: "asc" } } } } },
         orderBy: { createdAt: "desc" },
       });
+      log(`incoming="${message}" hasSession=${!!session} hasClient=${!!evolutionClient}`);
 
       if (session) {
+        log(`found session ${session.id.slice(-6)} step=${session.currentStepId?.slice(-6)} status=${session.status}`);
         return await FlowEngine.runFlow(session, message, evolutionClient, pushName);
       }
 
       // Buscar fluxo por keyword
       const flows = await prisma.flow.findMany({ where: { tenantId, isActive: true }, include: { steps: { orderBy: { order: "asc" } } } });
       const flow = flows.find(f => matchKeyword(message, f.triggerKeyword, f.triggerMode));
-      if (!flow) return { action: "no_match" as const };
+      if (!flow) { log(`no flow matched "${message}" among ${flows.length} flows`); return { action: "no_match" as const }; }
+      log(`matched flow "${flow.name}" (${flow.steps.length} steps)`);
 
       // Criar nova sessão
       const newSession = await prisma.flowSession.create({
@@ -119,8 +123,9 @@ export class FlowEngine {
     let status: string = dbSession.status || "active";
 
     // Se tem mensagem recebida E o passo atual é interativo, processa a resposta primeiro
-    console.log(`[FLOW] runFlow msg="${incomingMessage}" step=${currentStep?.type}:${currentStep?.order} session=${dbSession.id.slice(-6)}`);
+    console.log(`[RUN] s=${dbSession.id.slice(-6)} phone=${dbSession.customerPhone.slice(-6)} msg="${incomingMessage || 'START'}" cur=${currentStep?.type}:${currentStep?.order}`);
     if (incomingMessage && currentStep && INTERACTIVE.includes(currentStep.type)) {
+      console.log(`[RUN] processing interactive ${currentStep.type}`);
       const result = await FlowEngine.processInteractiveStep(currentStep, steps, incomingMessage, vars, loopCounters, dbSession, evolutionClient);
       vars = result.vars;
       status = result.status;
