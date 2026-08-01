@@ -60,7 +60,7 @@ services:
       - ezflow-net
 
   evolution:
-    image: evoapicloud/evolution-api:latest
+    image: evoapicloud/evolution-api:v2.3.7
     restart: unless-stopped
     environment:
       AUTHENTICATION_TYPE: apikey
