@@ -1,6 +1,22 @@
-# Multi-stage: download Baileys rc.13 in a fresh stage, then copy into Evolution
-FROM node:20-alpine AS downloader
-RUN mkdir -p /tmp/pkg && cd /tmp/pkg && npm init -y >/dev/null 2>&1 && npm install baileys@7.0.0-rc.13 --ignore-scripts --legacy-peer-deps 2>&1 | tail -3
+# Build Evolution API v2.3.7 from source with Baileys 7.0.0-rc.13
+FROM node:20-alpine AS builder
+RUN apk add --no-cache git python3 make g++
+WORKDIR /build
+RUN git clone --depth 1 --branch v2.3.7 https://github.com/EvolutionAPI/evolution-api.git .
+RUN npm pkg set dependencies.baileys=7.0.0-rc.13
+RUN npm install --ignore-scripts --legacy-peer-deps 2>&1 | tail -5
+RUN npx prisma generate 2>&1 | tail -3
+RUN npm run build 2>&1 | tail -5
 
-FROM evoapicloud/evolution-api:latest
-COPY --from=downloader /tmp/pkg/node_modules/baileys /evolution/node_modules/baileys
+FROM node:20-alpine
+RUN apk add --no-cache tini curl
+WORKDIR /evolution
+COPY --from=builder /build/dist ./dist
+COPY --from=builder /build/node_modules ./node_modules
+COPY --from=builder /build/package.json ./
+COPY --from=builder /build/prisma ./prisma
+COPY --from=builder /build/Docker ./Docker
+RUN chmod +x ./Docker/docker-entrypoint.sh
+EXPOSE 8080
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["/bin/sh", "-c", ". ./Docker/docker-entrypoint.sh && pm2-runtime dist/main.js"]
