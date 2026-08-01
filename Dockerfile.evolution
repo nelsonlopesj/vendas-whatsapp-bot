@@ -1,5 +1,2 @@
 FROM evoapicloud/evolution-api:latest
-RUN (cd /app && npm install baileys@7.0.0-rc.13 --no-save --legacy-peer-deps --ignore-scripts) || \
-    (cd /evolution-api && npm install baileys@7.0.0-rc.13 --no-save --legacy-peer-deps --ignore-scripts) || \
-    (cd /usr/src/app && npm install baileys@7.0.0-rc.13 --no-save --legacy-peer-deps --ignore-scripts) || \
-    (echo "FALLBACK: searching..." && find / -name "package.json" -not -path "*/node_modules/*" -maxdepth 4 2>/dev/null | head -3)
+RUN cd /evolution && npm install baileys@7.0.0-rc.13 --no-save --legacy-peer-deps --ignore-scripts
