@@ -8,6 +8,7 @@ import prisma from "./prisma";
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   session: { strategy: "jwt" },
+  allowDangerousEmailAccountLinking: true,
   pages: {
     signIn: "/login",
   },
