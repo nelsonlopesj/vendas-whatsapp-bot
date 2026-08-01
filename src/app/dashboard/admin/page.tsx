@@ -2,7 +2,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
-import { Users, CreditCard, Clock, CheckCircle2, XCircle, Sparkles } from "lucide-react";
+import { Users, CreditCard, Clock, CheckCircle2, XCircle, Sparkles, Trash2, RefreshCw } from "lucide-react";
+import { SessionCleaner } from "./session-cleaner";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,9 @@ export default async function AdminPage() {
         <p className="text-sm font-semibold">Faturamento total da plataforma</p>
         <p className="text-2xl font-bold text-green-600">R$ {(totalRevenue._sum.amount || 0).toFixed(2)}</p>
       </div>
+
+      {/* Sessões Travadas */}
+      <SessionCleaner />
 
       {/* Tenants table */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
