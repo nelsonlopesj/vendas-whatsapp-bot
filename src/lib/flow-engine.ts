@@ -94,6 +94,7 @@ export class FlowEngine {
       await prisma.flowSession.update({ where: { id: newSession.id }, data: { variables: productVars } });
       (newSession as any).variables = productVars;
 
+      // Sessão nova: inicia sem mensagem (null), executa passos até interativo
       return await FlowEngine.runFlow(newSession, null, evolutionClient, pushName);
     } catch (error: any) {
       console.error("[FLOW-ERR]", error.message);
