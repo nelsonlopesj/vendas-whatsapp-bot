@@ -869,6 +869,21 @@ function StepConfigPanel({
             </div>
           )}
           <div>
+            <label className="block text-xs font-medium mb-1 mt-3">
+              Resposta para mensagem inesperada
+            </label>
+            <textarea
+              value={config.fallbackMessage || ""}
+              onChange={(e) => onUpdateConfig({ fallbackMessage: e.target.value })}
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              placeholder="Ex: É um PDF com checklist completo! Digite SIM para adquirir 😊"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Enviada quando o cliente digita algo diferente do esperado (ex: &quot;é pdf?&quot;)
+            </p>
+          </div>
+          <div>
             <label className="block text-xs font-medium mb-1">
               Máximo de retentativas
             </label>
@@ -920,6 +935,21 @@ function StepConfigPanel({
               }
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
             />
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1 mt-3">
+              Mensagem de instrução (opcional)
+            </label>
+            <textarea
+              value={config.instructionMessage || ""}
+              onChange={(e) => onUpdateConfig({ instructionMessage: e.target.value })}
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              placeholder="Copie o código acima e cole no app do seu banco para pagar. O pagamento é confirmado na hora!"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Mensagem separada enviada logo após o código PIX
+            </p>
           </div>
           <div>
             <label className="block text-xs font-medium mb-1">

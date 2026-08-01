@@ -406,14 +406,14 @@ export class FlowEngine {
         if (expected.length > 0 && matchResponse(message, expected)) {
           nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
         } else {
-          // Resposta não esperada — tenta retry ou fica aguardando
+          // Resposta não esperada — envia fallbackMessage ou retryMessage
           const maxR = config.maxRetries || 0;
           const retryCount = loopCounters[currentStep.id] || 0;
-          if (maxR > 0 && retryCount < maxR && config.retryMessage) {
-            // Reenviar pergunta
+          const replyMsg = config.fallbackMessage || config.retryMessage;
+          if (maxR > 0 && retryCount < maxR && replyMsg) {
             loopCounters[currentStep.id] = retryCount + 1;
             if (evolutionClient) {
-              await evolutionClient.sendText({ number: session.customerPhone, text: config.retryMessage });
+              await evolutionClient.sendText({ number: session.customerPhone, text: replyMsg });
             }
             nextStepId = currentStep.id; // Fica no mesmo passo aguardando
           } else if (currentStep.altNextStepId) {
@@ -650,6 +650,13 @@ export class FlowEngine {
             number: phone,
             text: pix.pixCopyPaste,
           });
+          // Mensagem de instrução opcional (ex: "Copie e cole no app do banco")
+          if (config.instructionMessage) {
+            await evolutionClient.sendText({
+              number: phone,
+              text: config.instructionMessage,
+            });
+          }
 
           // Iniciar polling de status do PIX (backup, webhook é primary)
           setTimeout(async () => {
