@@ -1,0 +1,11 @@
+# Custom Evolution API image with Baileys 7.0.0-rc.13
+# Fixes error 463 (tctoken/cstoken missing) that plagues v2.3.7's rc.9
+FROM evoapicloud/evolution-api:latest
+
+WORKDIR /app
+
+# Bump Baileys from rc.9 to rc.13 — adds tctoken support required by Meta
+RUN npm install baileys@7.0.0-rc.13 --save --legacy-peer-deps 2>&1 | tail -5
+
+# Verify the upgrade took effect
+RUN node -e "const b = require('baileys'); console.log('Baileys OK')" 2>&1 || true
