@@ -1030,22 +1030,19 @@ export class FlowEngine {
     if (onTimeout === "retry") {
       const retryCount = loopCounters[currentStep.id] || 0;
       if (retryCount < (config.maxRetries || 2) && config.retryMessage) {
-        // Reenviar mensagem
-        if (
-          session.tenant.evolutionUrl &&
-          session.tenant.evolutionApikey
-        ) {
-          const evolutionClient = new EvolutionClient({
-            baseUrl: session.tenant.evolutionUrl,
-            apikey: session.tenant.evolutionApikey,
-            instance: "default",
-          });
+        // Reenviar mensagem — usa config do tenant ou fallback global
+        const waUrl = session.tenant.evolutionUrl || process.env.EZFLOW_WA_URL || "http://evolution:8080";
+        const waKey = session.tenant.evolutionApikey || process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
+        const evolutionClient = new EvolutionClient({
+          baseUrl: waUrl,
+          apikey: waKey,
+          instance: "default",
+        });
 
-          await evolutionClient.sendText({
-            number: session.customerPhone,
-            text: config.retryMessage,
-          });
-        }
+        await evolutionClient.sendText({
+          number: session.customerPhone,
+          text: config.retryMessage,
+        });
 
         loopCounters[currentStep.id] = retryCount + 1;
         await prisma.flowSession.update({
@@ -1055,6 +1052,8 @@ export class FlowEngine {
             lastActivityAt: new Date(),
           },
         });
+        // Reagendar próximo timeout
+        await scheduleTimeout(sessionId, currentStep.id, (session.variables || {}) as Record<string, string>, loopCounters);
         return;
       }
     }
@@ -1069,25 +1068,22 @@ export class FlowEngine {
       },
     });
 
-    // Mensagem de despedida se Evolution configurado
-    if (
-      session.tenant?.evolutionUrl &&
-      session.tenant?.evolutionApikey
-    ) {
-      try {
-        const evolutionClient = new EvolutionClient({
-          baseUrl: session.tenant.evolutionUrl,
-          apikey: session.tenant.evolutionApikey,
-          instance: "default",
-        });
+    // Mensagem de despedida
+    try {
+      const waUrl = session.tenant?.evolutionUrl || process.env.EZFLOW_WA_URL || "http://evolution:8080";
+      const waKey = session.tenant?.evolutionApikey || process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
+      const evolutionClient = new EvolutionClient({
+        baseUrl: waUrl,
+        apikey: waKey,
+        instance: "default",
+      });
 
-        await evolutionClient.sendText({
-          number: session.customerPhone,
-          text: "😔 Não recebemos sua resposta. Se quiser continuar, é só mandar outra mensagem. Até logo!",
-        });
-      } catch (err) {
-        console.error("Timeout message error:", err);
-      }
+      await evolutionClient.sendText({
+        number: session.customerPhone,
+        text: "😔 Não recebemos sua resposta. Se quiser continuar, é só mandar outra mensagem. Até logo!",
+      });
+    } catch (err) {
+      console.error("Timeout message error:", err);
     }
   }
 }
