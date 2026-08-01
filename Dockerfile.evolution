@@ -2,7 +2,7 @@
 FROM node:20-alpine AS builder
 RUN apk add --no-cache git python3 make g++
 WORKDIR /build
-RUN git clone --depth 1 --branch v2.3.7 https://github.com/EvolutionAPI/evolution-api.git .
+RUN git clone --depth 1 --branch v2.3.7 https://github.com/evolution-foundation/evolution-api.git .
 RUN npm pkg set dependencies.baileys=7.0.0-rc.13
 RUN npm install --ignore-scripts --legacy-peer-deps 2>&1 | tail -5
 RUN npx prisma generate 2>&1 | tail -3
