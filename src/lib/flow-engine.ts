@@ -835,8 +835,8 @@ export class FlowEngine {
       }
 
       // Evitar entrega duplicada
-      if (sale.deliveryStatus === "sent") {
-        console.log(`[DELIVER] Sale ${sale.id} already delivered, skipping`);
+      if (sale.deliveryStatus === "sent" || sale.deliveryStatus === "sending") {
+        console.log(`[DELIVER] Sale ${sale.id} already ${sale.deliveryStatus}, skipping`);
         return { success: true, delivered: true };
       }
 
@@ -872,6 +872,9 @@ export class FlowEngine {
         const session = sale.session;
         console.log(`[DELIVER] session=${session?.id} status=${session?.status}`);
         if (session && session.status === "waiting_pix") {
+          // Marca como "sending" pra evitar race condition com polling
+          await prisma.sale.update({ where: { id: sale.id }, data: { deliveryStatus: "sending" } });
+
           const metadata = sale.metadata as any;
           const deliverStepId = metadata?.nextStepId;
           console.log(`[DELIVER] metadata=${JSON.stringify(metadata)}`);
