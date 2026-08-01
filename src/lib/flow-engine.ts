@@ -831,6 +831,12 @@ export class FlowEngine {
         return { success: false, delivered: false };
       }
 
+      // Evitar entrega duplicada
+      if (sale.deliveryStatus === "sent") {
+        console.log(`[DELIVER] Sale ${sale.id} already delivered, skipping`);
+        return { success: true, delivered: true };
+      }
+
       // Buscar tenant config
       const tenant = await prisma.tenant.findUnique({
         where: { id: tenantId },
