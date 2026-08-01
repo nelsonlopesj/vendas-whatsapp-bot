@@ -42,7 +42,7 @@ export default function UploadProductPage() {
       const formData = new FormData();
       formData.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: formData });
-      if (!res.ok) { setError(`Erro ao enviar: ${file.name}`); setLoading(false); setUploading(false); return; }
+      if (!res.ok) { const errData = await res.json().catch(() => ({})); setError(`Erro ao enviar ${file.name}: ${errData.error || res.status}`); setLoading(false); setUploading(false); return; }
       const data = await res.json();
       urls.push(data.url);
     }
