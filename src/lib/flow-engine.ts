@@ -700,7 +700,7 @@ export class FlowEngine {
               const b64 = buffer.toString("base64");
               const mimeMap: Record<string, string> = { pdf: "application/pdf", mp3: "audio/mpeg", m4a: "audio/mp4", ogg: "audio/ogg", wav: "audio/wav", mp4: "video/mp4", mov: "video/quicktime", avi: "video/x-msvideo", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp" };
               const mimeType = mimeMap[ext] || "application/octet-stream";
-              mediaUrl = `data:${mimeType};base64,${b64}`;
+              mediaUrl = b64;
               console.log(`[DELIVER] converted ${url} to base64 (${(buffer.length/1024).toFixed(0)}KB)`);
             } catch (err: any) {
               console.error(`[DELIVER] failed to read local file ${url}:`, err.message);
