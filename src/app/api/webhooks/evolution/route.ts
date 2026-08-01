@@ -10,6 +10,9 @@ const WA_KEY = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ez
 const recentIds = new Set<string>();
 setInterval(() => recentIds.clear(), 10000);
 
+// Lock por telefone: evita race condition que cria sessões duplicadas
+const processingLock = new Map<string, Promise<void>>();
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -28,90 +31,107 @@ export async function POST(req: NextRequest) {
 
     console.log(`[WA-IN] ${phone}: "${message}" (${pushName || "?"})`);
 
-    // Buscar todos os tenants ativos
-    const tenants = await prisma.tenant.findMany({
-      where: { isActive: true },
-    });
+    // Serializar processamento por telefone (evita sessões duplicadas)
+    const previousLock = processingLock.get(phone);
+    const processMessage = async () => {
+      // Aguarda processamento anterior terminar (se existir)
+      if (previousLock) await previousLock;
 
-    if (tenants.length === 0) {
-      return NextResponse.json({ success: false, error: "Nenhum tenant ativo" });
-    }
-
-    const evolutionClient = new EvolutionClient({
-      baseUrl: WA_URL,
-      apikey: WA_KEY,
-      instance: "default",
-    });
-
-    let processed = false;
-
-    for (const tenant of tenants) {
-      // Verificar assinatura
-      const { checkSubscription } = await import("@/lib/subscription");
-      const sub = await checkSubscription(tenant.id);
-      if (!sub.allowed) continue; // pula tenant sem assinatura
-
-      // Sessão ativa para este tenant?
-      const session = await prisma.flowSession.findFirst({
-        where: {
-          tenantId: tenant.id,
-          customerPhone: phone,
-          status: { in: ["active", "waiting_pix"] },
-        },
+      // Buscar todos os tenants ativos
+      const tenants = await prisma.tenant.findMany({
+        where: { isActive: true },
       });
 
-      if (session) {
-        const result = await FlowEngine.processIncoming(phone, message, tenant.id, pushName, evolutionClient);
-        // Só marca como processado se a sessão ainda está ativa ou waiting_pix
-        // Se foi completada/timed_out, deixa cair no keyword match abaixo
-        if (result.action !== "no_match" && result.session?.status !== "completed" && result.session?.status !== "timed_out") {
-          await prisma.messageLog.create({
-            data: {
-              tenantId: tenant.id,
-              sessionId: session.id,
-              customerPhone: phone,
-              direction: "inbound",
-              type: "text",
-              content: message,
-              wamId: messageId,
-              status: "received",
-            },
-          });
-          processed = true;
-          break;
-        }
-        console.log(`[WA-SESSION] old session closed, trying keyword match for "${message}"`);
+      if (tenants.length === 0) {
+        return false;
       }
-    }
 
-    // Sem sessão: tenta keyword match
-    if (!processed) {
+      const evolutionClient = new EvolutionClient({
+        baseUrl: WA_URL,
+        apikey: WA_KEY,
+        instance: "default",
+      });
+
+      let processed = false;
+
       for (const tenant of tenants) {
-        const result = await FlowEngine.processIncoming(phone, message, tenant.id, pushName, evolutionClient);
+        // Verificar assinatura
+        const { checkSubscription } = await import("@/lib/subscription");
+        const sub = await checkSubscription(tenant.id);
+        if (!sub.allowed) continue;
 
-        if (result.action !== "no_match") {
-          await prisma.messageLog.create({
-            data: {
-              tenantId: tenant.id,
-              sessionId: result.session?.id || undefined,
-              customerPhone: phone,
-              direction: "inbound",
-              type: "text",
-              content: message,
-              wamId: messageId,
-              status: "received",
-            },
-          });
-          processed = true;
-          console.log(`[WA-FLOW] matched flow for ${phone}: "${message}"`);
-          break;
+        // Sessão ativa para este tenant?
+        const session = await prisma.flowSession.findFirst({
+          where: {
+            tenantId: tenant.id,
+            customerPhone: phone,
+            status: { in: ["active", "waiting_pix"] },
+          },
+        });
+
+        if (session) {
+          const result = await FlowEngine.processIncoming(phone, message, tenant.id, pushName, evolutionClient);
+          if (result.action !== "no_match" && result.session?.status !== "completed" && result.session?.status !== "timed_out") {
+            await prisma.messageLog.create({
+              data: {
+                tenantId: tenant.id,
+                sessionId: session.id,
+                customerPhone: phone,
+                direction: "inbound",
+                type: "text",
+                content: message,
+                wamId: messageId,
+                status: "received",
+              },
+            });
+            processed = true;
+            break;
+          }
+          console.log(`[WA-SESSION] old session closed, trying keyword match for "${message}"`);
         }
       }
-    }
 
-    if (!processed) {
-      console.log(`[WA-NOMATCH] ${phone}: "${message}" — nenhum fluxo`);
-    }
+      // Sem sessão: tenta keyword match
+      if (!processed) {
+        for (const tenant of tenants) {
+          const result = await FlowEngine.processIncoming(phone, message, tenant.id, pushName, evolutionClient);
+
+          if (result.action !== "no_match") {
+            await prisma.messageLog.create({
+              data: {
+                tenantId: tenant.id,
+                sessionId: result.session?.id || undefined,
+                customerPhone: phone,
+                direction: "inbound",
+                type: "text",
+                content: message,
+                wamId: messageId,
+                status: "received",
+              },
+            });
+            processed = true;
+            console.log(`[WA-FLOW] matched flow for ${phone}: "${message}"`);
+            break;
+          }
+        }
+      }
+
+      if (!processed) {
+        console.log(`[WA-NOMATCH] ${phone}: "${message}" — nenhum fluxo`);
+      }
+
+      return processed;
+    };
+
+    // Cria lock e garante limpeza
+    const lockPromise = processMessage().finally(() => {
+      if (processingLock.get(phone) === lockPromise) {
+        processingLock.delete(phone);
+      }
+    });
+    processingLock.set(phone, lockPromise);
+
+    const processed = await lockPromise;
 
     return NextResponse.json({ success: true, processed });
   } catch (error: any) {
