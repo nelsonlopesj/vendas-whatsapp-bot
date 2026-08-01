@@ -1,2 +1,6 @@
+# Multi-stage: download Baileys rc.13 in a fresh stage, then copy into Evolution
+FROM node:20-alpine AS downloader
+RUN mkdir -p /tmp/pkg && cd /tmp/pkg && npm init -y >/dev/null 2>&1 && npm install baileys@7.0.0-rc.13 --ignore-scripts --legacy-peer-deps 2>&1 | tail -3
+
 FROM evoapicloud/evolution-api:latest
-RUN cd /evolution && npm install baileys@7.0.0-rc.13 --no-save --legacy-peer-deps --ignore-scripts
+COPY --from=downloader /tmp/pkg/node_modules/baileys /evolution/node_modules/baileys
