@@ -1,6 +1,5 @@
-# Custom Evolution API with Baileys 7.0.0-rc.13 for tctoken/463 fix
 FROM evoapicloud/evolution-api:latest
-RUN npm install -g npm@latest 2>/dev/null; \
-    APP_DIR=$(find / -name "package.json" -path "*/evolution*" -not -path "*/node_modules/*" 2>/dev/null | head -1 | xargs dirname 2>/dev/null || echo "/app"); \
-    echo "APP_DIR=$APP_DIR"; \
-    cd "$APP_DIR" && npm install baileys@7.0.0-rc.13 --no-save --legacy-peer-deps 2>&1
+RUN (cd /app && npm install baileys@7.0.0-rc.13 --no-save --legacy-peer-deps --ignore-scripts) || \
+    (cd /evolution-api && npm install baileys@7.0.0-rc.13 --no-save --legacy-peer-deps --ignore-scripts) || \
+    (cd /usr/src/app && npm install baileys@7.0.0-rc.13 --no-save --legacy-peer-deps --ignore-scripts) || \
+    (echo "FALLBACK: searching..." && find / -name "package.json" -not -path "*/node_modules/*" -maxdepth 4 2>/dev/null | head -3)
