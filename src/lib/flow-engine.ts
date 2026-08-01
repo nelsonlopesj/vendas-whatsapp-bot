@@ -546,6 +546,13 @@ export class FlowEngine {
         });
         const token = tenant?.mercadopagoToken || "";
         if (!token) {
+          console.error(`[PIX-ERR] No Mercado Pago token for tenant ${tenantId}`);
+          try {
+            await evolutionClient.sendText({
+              number: phone,
+              text: "❌ *Erro ao gerar PIX*\n\nO token do Mercado Pago não foi configurado. Por favor, entre em contato com o suporte.",
+            });
+          } catch {}
           return {
             nextStepId: step.altNextStepId || null,
             status: "failed",
