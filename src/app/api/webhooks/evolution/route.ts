@@ -6,6 +6,10 @@ import { FlowEngine } from "@/lib/flow-engine";
 const WA_URL = process.env.EZFLOW_WA_URL || "http://evolution:8080";
 const WA_KEY = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
 
+// Anti-duplicata: IDs processados nos últimos 10s
+const recentIds = new Set<string>();
+setInterval(() => recentIds.clear(), 10000);
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -15,6 +19,13 @@ export async function POST(req: NextRequest) {
     }
 
     const { phone, message, messageId, pushName } = parsed;
+
+    // Ignorar duplicatas (Evolution pode enviar webhook 2x)
+    if (recentIds.has(messageId)) {
+      return NextResponse.json({ success: true, ignored: true, reason: "duplicate" });
+    }
+    recentIds.add(messageId);
+
     console.log(`[WA-IN] ${phone}: "${message}" (${pushName || "?"})`);
 
     // Buscar todos os tenants ativos
