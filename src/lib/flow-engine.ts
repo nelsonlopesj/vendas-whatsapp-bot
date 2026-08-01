@@ -710,9 +710,12 @@ export class FlowEngine {
           try { await evolutionClient.sendMedia({ number: phone, mediaType: type as any, mediaUrl, fileName: name, caption: `📎 ${name}` }); console.log(`[DELIVER] sent OK: ${name}`); } catch (err: any) { console.error(`[DELIVER] sendMedia failed for ${name}:`, err.message); }
         };
         const filesToSend: { url: string; name: string }[] = [];
-        if (fileUrl) filesToSend.push({ url: fileUrl, name: productName });
-        // Extra files do produto
+        // Extra files primeiro (inclui todos os arquivos com nomes originais)
         try { const extra = JSON.parse(variables["product.extraFiles"] || "[]"); (extra as any[]).forEach((f: any) => filesToSend.push({ url: f.url, name: f.name || "Arquivo" })); } catch {}
+        // Arquivo principal: só adiciona se não está nos extraFiles (backward compat)
+        if (fileUrl && !filesToSend.some(f => f.url === fileUrl)) {
+          filesToSend.push({ url: fileUrl, name: productName });
+        }
         for (const f of filesToSend) { await sendOne(f.url, f.name); }
 
         // Atualizar venda como entregue

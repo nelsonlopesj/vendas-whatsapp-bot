@@ -49,10 +49,10 @@ export default function UploadProductPage() {
     setUploading(false);
     setFileUrls(urls);
 
-    // Criar produto: primeiro arquivo = principal, resto = extraFiles
-    const extraFiles = urls.slice(1).map((url, i) => ({
+    // Criar produto: todos os arquivos em extraFiles (incluindo o primeiro)
+    const extraFiles = urls.map((url, i) => ({
       url,
-      name: files[i + 1]?.name || `Arquivo ${i + 2}`,
+      name: files[i]?.name || `Arquivo ${i + 1}`,
     }));
 
     const res = await fetch("/api/products", {
