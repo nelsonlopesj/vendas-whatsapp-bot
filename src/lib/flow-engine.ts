@@ -685,11 +685,29 @@ export class FlowEngine {
 
         // Enviar arquivo(s)
         const sendOne = async (url: string, name: string) => {
-          const full = url.startsWith("http") ? url : `http://portal:3000${url}`;
           const ext = (url.split(".").pop() || "").toLowerCase();
           const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov"].includes(ext) ? "video" : ["jpg","jpeg","png","gif"].includes(ext) ? "image" : "document";
-          console.log(`[DELIVER] sending ${type} file: ${full} (${name})`);
-          try { await evolutionClient.sendMedia({ number: phone, mediaType: type as any, mediaUrl: full, fileName: name, caption: `📎 ${name}` }); console.log(`[DELIVER] sent OK: ${name}`); } catch (err: any) { console.error(`[DELIVER] sendMedia failed for ${name}:`, err.message); }
+          console.log(`[DELIVER] sending ${type} file: ${url} (${name})`);
+
+          // Se é arquivo local (/uploads/...), converte pra base64
+          let mediaUrl = url;
+          if (url.startsWith("/uploads/")) {
+            try {
+              const fs = await import("fs/promises");
+              const path = await import("path");
+              const filePath = path.join(process.cwd(), "public", url);
+              const buffer = await fs.readFile(filePath);
+              const b64 = buffer.toString("base64");
+              const mimeMap: Record<string, string> = { pdf: "application/pdf", mp3: "audio/mpeg", m4a: "audio/mp4", ogg: "audio/ogg", wav: "audio/wav", mp4: "video/mp4", mov: "video/quicktime", avi: "video/x-msvideo", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp" };
+              const mimeType = mimeMap[ext] || "application/octet-stream";
+              mediaUrl = `data:${mimeType};base64,${b64}`;
+              console.log(`[DELIVER] converted ${url} to base64 (${(buffer.length/1024).toFixed(0)}KB)`);
+            } catch (err: any) {
+              console.error(`[DELIVER] failed to read local file ${url}:`, err.message);
+              return;
+            }
+          }
+          try { await evolutionClient.sendMedia({ number: phone, mediaType: type as any, mediaUrl, fileName: name, caption: `📎 ${name}` }); console.log(`[DELIVER] sent OK: ${name}`); } catch (err: any) { console.error(`[DELIVER] sendMedia failed for ${name}:`, err.message); }
         };
         const filesToSend: { url: string; name: string }[] = [];
         if (fileUrl) filesToSend.push({ url: fileUrl, name: productName });
