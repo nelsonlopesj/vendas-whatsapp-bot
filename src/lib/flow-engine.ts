@@ -1006,22 +1006,25 @@ export class FlowEngine {
    * Lida com timeout de sessão (WAIT_RESPONSE sem resposta)
    */
   static async handleTimeout(sessionId: string): Promise<void> {
+    console.log(`[TIMEOUT] handleTimeout called for session ${sessionId?.slice(-8)}`);
     const session = await prisma.flowSession.findUnique({
       where: { id: sessionId },
       include: { flow: { include: { steps: true } }, tenant: true },
     });
 
-    if (!session || session.status !== "active") return;
+    if (!session) { console.log(`[TIMEOUT] session not found: ${sessionId?.slice(-8)}`); return; }
+    if (session.status !== "active") { console.log(`[TIMEOUT] session status=${session.status}, skipping`); return; }
 
     const steps = session.flow?.steps || [];
     const currentStep = steps.find(
       (s: any) => s.id === session.currentStepId
     );
 
-    if (!currentStep) return;
+    if (!currentStep) { console.log(`[TIMEOUT] currentStep not found for session ${sessionId?.slice(-8)}`); return; }
 
     const config = (currentStep.config || {}) as Record<string, any>;
     const onTimeout = config.onTimeout || "exit";
+    console.log(`[TIMEOUT] session=${sessionId?.slice(-8)} step=${currentStep.type} onTimeout=${onTimeout}`);
     const loopCounters = (session.loopCounters || {}) as Record<
       string,
       number
