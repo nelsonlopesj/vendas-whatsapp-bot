@@ -9,6 +9,7 @@ import {
   ArrowLeftRight,
   ShoppingCart,
   Settings,
+  BarChart3,
   LogOut,
   Menu,
   X,
@@ -24,6 +25,7 @@ const navItems = [
     items: [
       { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
       { href: "/dashboard/sales", label: "Vendas", icon: ShoppingCart },
+      { href: "/dashboard/reports", label: "Relatórios", icon: BarChart3 },
     ],
   },
   {
