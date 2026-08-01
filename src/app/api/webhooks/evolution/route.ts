@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
         const result = await FlowEngine.processIncoming(phone, message, tenant.id, pushName, evolutionClient);
         // Só marca como processado se a sessão ainda está ativa ou waiting_pix
         // Se foi completada/timed_out, deixa cair no keyword match abaixo
-        if (result.action !== "completed" && result.action !== "no_match" && result.session?.status !== "completed" && result.session?.status !== "timed_out") {
+        if (result.action !== "no_match" && result.session?.status !== "completed" && result.session?.status !== "timed_out") {
           await prisma.messageLog.create({
             data: {
               tenantId: tenant.id,
