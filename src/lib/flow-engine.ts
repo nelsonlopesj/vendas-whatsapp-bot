@@ -8,6 +8,7 @@
 import prisma from "./prisma";
 import { EvolutionClient } from "./evolution";
 import { MercadoPagoClient } from "./mercadopago";
+import { flowTimeoutQueue } from "./queue";
 
 // ===== Tipos =====
 
@@ -334,6 +335,15 @@ export class FlowEngine {
       data: { lastActivityAt: new Date() },
     });
 
+    // Cancelar timeout pendente (cliente respondeu)
+    try {
+      const timeoutJob = await flowTimeoutQueue.getJob(`timeout-${session.id}`);
+      if (timeoutJob) {
+        await timeoutJob.remove();
+        console.log(`[TIMEOUT] cancelled for session ${session.id} (customer responded)`);
+      }
+    } catch {} // Ignora erro — timeout que não existe ou Redis fora
+
     // Determinar próximo passo baseado no tipo do passo atual
     let nextStepId: string | null = null;
     let responseText: string | undefined;
@@ -529,8 +539,22 @@ export class FlowEngine {
       case "WAIT_RESPONSE": {
         // Não envia nada, apenas espera a resposta do cliente
         // A resposta será processada em continueSession
-        // Configurar timeout via BullMQ delayed job
         variables._waitStartedAt = String(Date.now());
+
+        // Agendar timeout via BullMQ delayed job
+        const timeoutSeconds = config.timeout || 3600;
+        const retryCount = loopCounters[step.id] || 0;
+        try {
+          await flowTimeoutQueue.add(
+            "timeout",
+            { sessionId: session.id, stepId: step.id, retryCount },
+            { delay: timeoutSeconds * 1000, jobId: `timeout-${session.id}` }
+          );
+          console.log(`[TIMEOUT] scheduled for session ${session.id} in ${timeoutSeconds}s (retry ${retryCount})`);
+        } catch (err: any) {
+          console.error(`[TIMEOUT] failed to schedule for session ${session.id}:`, err.message);
+        }
+
         return {
           nextStepId: step.id, // Aguarda no mesmo passo
           status: "active",
