@@ -289,6 +289,7 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
         type: s.type,
         label: s.label,
         config: s.config,
+        productId: s.productId,
       })),
       exportedAt: new Date().toISOString(),
       version: "1.0",
@@ -325,7 +326,7 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
               type: s.type,
               label: s.label || s.type,
               config: s.config || {},
-              productId: null,
+              productId: s.productId || null,
               nextStepId: null,
               altNextStepId: null,
             }))
@@ -770,22 +771,44 @@ function StepConfigPanel({
 
       {/* Configs específicas por tipo */}
       {step.type === "SEND_MESSAGE" && (
-        <div>
-          <label className="block text-xs font-medium mb-1">
-            Texto da mensagem
-          </label>
-          <textarea
-            value={config.text || ""}
-            onChange={(e) => onUpdateConfig({ text: e.target.value })}
-            rows={4}
-            className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-            placeholder="Use {{product.name}} e {{product.price}} como variáveis"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Variáveis: {"{{product.name}}"}, {"{{product.price}}"},{" "}
-            {"{{customer.name}}"}
-          </p>
-        </div>
+        <>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Texto da mensagem
+            </label>
+            <textarea
+              value={config.text || ""}
+              onChange={(e) => onUpdateConfig({ text: e.target.value })}
+              rows={4}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              placeholder="Use {{product.name}} e {{product.price}} como variáveis"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Variáveis: {"{{product.name}}"}, {"{{product.price}}"},{" "}
+              {"{{customer.name}}"}
+            </p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1 mt-3">
+              Produto vinculado (para resolver as variáveis)
+            </label>
+            <select
+              value={step.productId || ""}
+              onChange={(e) => onSetProductId(e.target.value || null)}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            >
+              <option value="">Nenhum (variáveis não resolvem)</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} (R$ {p.price.toFixed(2)})
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Selecione um produto para que {"{{product.name}}"} e {"{{product.price}}"} sejam substituídos pelos valores reais
+            </p>
+          </div>
+        </>
       )}
 
       {step.type === "WAIT_RESPONSE" && (
