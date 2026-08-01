@@ -192,13 +192,12 @@ export class EvolutionClient {
       }
     );
 
+    const data = await res.json();
+    console.log(`[EVO] sendText to=${params.number.slice(-6)} ok=${res.ok} status=${res.status} resp=${JSON.stringify(data).slice(0, 100)}`);
     if (!res.ok) {
-      throw new Error(
-        `Evolution sendText failed: ${res.status} ${await res.text()}`
-      );
+      throw new Error(`Evolution sendText failed: ${res.status} ${JSON.stringify(data)}`);
     }
-
-    return res.json();
+    return data;
   }
 
   /**
