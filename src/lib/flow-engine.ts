@@ -130,8 +130,9 @@ export class FlowEngine {
         return { action: "continue_session" };
       }
     } else if (incomingMessage && currentStep && !INTERACTIVE.includes(currentStep.type)) {
-      // Mensagem recebida mas passo atual não é interativo — ignora (pode ser duplicata)
-      return { action: "continue_session" };
+      // Mensagem em passo não-interativo — sessão velha, fecha e permite keyword match
+      await FlowEngine.saveSession(dbSession.id, null, "completed", vars, loopCounters, null);
+      return { action: "completed" };
     }
 
     // Loop: executar passos não-interativos em sequência
