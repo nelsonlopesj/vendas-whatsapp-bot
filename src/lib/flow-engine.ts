@@ -576,6 +576,7 @@ export class FlowEngine {
             variables["product.name"] = product.name;
             variables["product.price"] = String(product.price);
             variables["product.fileUrl"] = product.fileUrl;
+            variables["product.extraFiles"] = JSON.stringify(product.extraFiles || []);
           }
         } else if (config.valueFrom) {
           price = parseFloat(variables[config.valueFrom] || "0") || 0;
@@ -687,7 +688,8 @@ export class FlowEngine {
           const full = url.startsWith("http") ? url : `http://portal:3000${url}`;
           const ext = (url.split(".").pop() || "").toLowerCase();
           const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov"].includes(ext) ? "video" : ["jpg","jpeg","png","gif"].includes(ext) ? "image" : "document";
-          try { await evolutionClient.sendMedia({ number: phone, mediaType: type as any, mediaUrl: full, fileName: name, caption: `📎 ${name}` }); } catch {}
+          console.log(`[DELIVER] sending ${type} file: ${full} (${name})`);
+          try { await evolutionClient.sendMedia({ number: phone, mediaType: type as any, mediaUrl: full, fileName: name, caption: `📎 ${name}` }); console.log(`[DELIVER] sent OK: ${name}`); } catch (err: any) { console.error(`[DELIVER] sendMedia failed for ${name}:`, err.message); }
         };
         const filesToSend: { url: string; name: string }[] = [];
         if (fileUrl) filesToSend.push({ url: fileUrl, name: productName });
