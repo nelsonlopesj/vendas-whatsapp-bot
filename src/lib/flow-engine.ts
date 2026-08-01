@@ -319,7 +319,7 @@ export class FlowEngine {
       return { action: "continue_session" };
     }
 
-    const variables = (session.variables || {}) as Record<string, string>;
+    let allVars = (session.variables || {}) as Record<string, string>;
     const loopCounters = (session.loopCounters || {}) as Record<
       string,
       number
@@ -350,7 +350,7 @@ export class FlowEngine {
       if (currentStep.type === "WAIT_RESPONSE") {
         // Salvar resposta na variável
         const varName = config.variable || "resposta";
-        variables[varName] = message;
+        allVars[varName] = message;
 
         // Verificar se resposta é esperada
         const expected = config.expected || [];
@@ -438,19 +438,19 @@ export class FlowEngine {
     while (cs && evolutionClient) {
       if (cs.type === "WAIT_RESPONSE" || cs.type === "GENERATE_PIX") {
         // Para e espera input externo
-        await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables, loopCounters } });
-        return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables, loopCounters } };
+        await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables: allVars, loopCounters } });
+        return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables: allVars, loopCounters } };
       }
 
       const result = await FlowEngine.executeStep(cs, session, session.customerPhone, session.tenantId, evolutionClient, steps);
-      variables = { ...variables, ...result.variables };
+      allVars = { ...allVars, ...result.variables };
       if (!result.nextStepId) break;
-      cs = steps.find((s: FlowStepData) => s.id === result.nextStepId) || null;
+      cs = steps.find((s: FlowStepData) => s.id === result.nextStepId) || undefined;
     }
 
     // Atualizar sessão
     if (cs?.id) {
-      await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables, loopCounters } });
+      await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables: allVars, loopCounters } });
     }
 
     return { action: "continue_session" };
