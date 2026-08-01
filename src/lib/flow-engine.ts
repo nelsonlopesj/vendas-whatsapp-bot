@@ -1,8 +1,9 @@
 /**
- * Flow Engine — Máquina de Estados para Automação de Vendas
+ * Flow Engine — Máquina de Estados Unificada
  *
- * Gerencia sessões de fluxo, processa mensagens recebidas, executa passos
- * (mensagem, espera, PIX, entrega, condição, loop) e gerencia timeouts/retry.
+ * Um único loop de execução para iniciar E continuar fluxos.
+ * Passos interativos (WAIT_RESPONSE, GENERATE_PIX) pausam o loop.
+ * Passos não-interativos (SEND_MESSAGE, DELAY, DELIVER_PRODUCT, CONDITION, LOOP) executam e avançam.
  */
 
 import prisma from "./prisma";
@@ -10,982 +11,368 @@ import { EvolutionClient } from "./evolution";
 import { MercadoPagoClient } from "./mercadopago";
 
 // ===== Tipos =====
-
 export interface FlowSession {
-  id: string;
-  flowId: string;
-  tenantId: string;
-  currentStepId: string | null;
-  customerPhone: string;
-  customerName?: string | null;
+  id: string; flowId: string; tenantId: string;
+  currentStepId: string | null; customerPhone: string; customerName?: string | null;
   status: "active" | "waiting_pix" | "timed_out" | "completed" | "failed";
-  variables: Record<string, string>;
-  loopCounters: Record<string, number>;
-  currentPixId?: string | null;
-  failureReason?: string | null;
+  variables: Record<string, string>; loopCounters: Record<string, number>;
+  currentPixId?: string | null; failureReason?: string | null;
 }
 
 interface FlowStepData {
-  id: string;
-  type: string;
-  order: number;
-  label: string | null;
-  config: Record<string, any>;
-  productId: string | null;
-  nextStepId: string | null;
-  altNextStepId: string | null;
+  id: string; type: string; order: number; label: string | null;
+  config: Record<string, any>; productId: string | null;
+  nextStepId: string | null; altNextStepId: string | null;
 }
 
-// ===== Template Renderer =====
-
-function renderTemplate(
-  text: string,
-  variables: Record<string, string>
-): string {
-  return text.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (_, key) => {
-    return variables[key] || `{{${key}}}`;
-  });
+// ===== Helpers =====
+function renderTemplate(text: string, vars: Record<string, string>): string {
+  return text.replace(/\{\{(\w+(?:\.\w+)*)\}\}/g, (_, k) => vars[k] || `{{${k}}}`);
 }
 
-// ===== Keyword Matching =====
-
-function matchKeyword(
-  message: string,
-  keyword: string,
-  mode: string
-): boolean {
-  const msg = message.toLowerCase().trim();
-  const kw = keyword.toLowerCase().trim();
-
-  switch (mode) {
-    case "exact":
-      return msg === kw;
-    case "regex":
-      try {
-        return new RegExp(kw, "i").test(msg);
-      } catch {
-        return msg.includes(kw);
-      }
-    case "contains":
-    default:
-      return msg.includes(kw);
-  }
+function matchKeyword(msg: string, kw: string, mode: string): boolean {
+  const m = msg.toLowerCase().trim(); const k = kw.toLowerCase().trim();
+  if (mode === "exact") return m === k;
+  if (mode === "regex") { try { return new RegExp(k, "i").test(m); } catch { return m.includes(k); } }
+  return m.includes(k);
 }
 
-// ===== Response Matching =====
-
-function matchResponse(
-  message: string,
-  expected: string[],
-  operator: string = "contains_any"
-): boolean {
-  const msg = message.toLowerCase().trim();
-  const values = expected.map((v) => v.toLowerCase().trim());
-
-  switch (operator) {
-    case "equals":
-      return values.some((v) => msg === v);
-    case "not_contains":
-      return !values.some((v) => msg.includes(v));
-    case "contains_any":
-    default:
-      return values.some((v) => msg.includes(v));
-  }
+function matchResponse(msg: string, expected: string[]): boolean {
+  const m = msg.toLowerCase().trim();
+  return expected.some(e => m.includes(e.toLowerCase().trim()));
 }
 
-// ===== Flow Engine =====
+async function fetchWithTimeout(url: string, opts: RequestInit, ms = 5000) {
+  const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ctrl.signal }); } finally { clearTimeout(t); }
+}
 
+// Passos que precisam de input externo
+const INTERACTIVE = ["WAIT_RESPONSE", "GENERATE_PIX"];
+
+// ===== Motor Principal =====
 export class FlowEngine {
-  /**
-   * Processa uma mensagem recebida do WhatsApp.
-   * Esta é a função principal chamada pelo webhook.
-   */
-  static async processIncoming(
-    phone: string,
-    message: string,
-    tenantId: string,
-    pushName?: string,
-    evolutionClient?: EvolutionClient
-  ): Promise<{
-    action: "new_session" | "continue_session" | "no_match" | "error";
-    session?: FlowSession;
-    response?: string;
-  }> {
+
+  /** Processa uma mensagem recebida do WhatsApp */
+  static async processIncoming(phone: string, message: string, tenantId: string, pushName?: string, evolutionClient?: EvolutionClient) {
     try {
-      // 1. Buscar sessão ativa para este contato
-      const existingSession = await prisma.flowSession.findFirst({
-        where: {
-          tenantId,
-          customerPhone: phone,
-          status: { in: ["active", "waiting_pix"] },
-        },
-        include: { flow: { include: { steps: true } } },
+      // Buscar sessão ativa
+      const session = await prisma.flowSession.findFirst({
+        where: { tenantId, customerPhone: phone, status: { in: ["active", "waiting_pix"] } },
+        include: { flow: { include: { steps: { orderBy: { order: "asc" } } } } },
         orderBy: { createdAt: "desc" },
       });
 
-      // 2. Se tem sessão ativa → continuar fluxo
-      if (existingSession) {
-        return await FlowEngine.continueSession(
-          existingSession,
-          message,
-          pushName,
-          evolutionClient
-        );
+      if (session) {
+        return await FlowEngine.runFlow(session, message, evolutionClient, pushName);
       }
 
-      // 3. Se não tem → buscar fluxo por keyword match
-      const flows = await prisma.flow.findMany({
-        where: {
-          tenantId,
-          isActive: true,
-        },
-        include: { steps: { orderBy: { order: "asc" } } },
+      // Buscar fluxo por keyword
+      const flows = await prisma.flow.findMany({ where: { tenantId, isActive: true }, include: { steps: { orderBy: { order: "asc" } } } });
+      const flow = flows.find(f => matchKeyword(message, f.triggerKeyword, f.triggerMode));
+      if (!flow) return { action: "no_match" as const };
+
+      // Criar nova sessão
+      const newSession = await prisma.flowSession.create({
+        data: { tenantId, flowId: flow.id, customerPhone: phone, customerName: pushName || null, status: "active", variables: {}, loopCounters: {} },
+        include: { flow: { include: { steps: { orderBy: { order: "asc" } } } } },
       });
 
-      const matchedFlow = flows.find((flow) =>
-        matchKeyword(message, flow.triggerKeyword, flow.triggerMode)
-      );
-
-      if (!matchedFlow) {
-        // 4. Se não tem fluxo que matcha, enviar mensagem padrão se tiver welcomeMessage
-        // Por ora, retorna no_match
-        return { action: "no_match" };
-      }
-
-      // 5. Criar nova sessão
-      return await FlowEngine.startSession(
-        matchedFlow,
-        phone,
-        tenantId,
-        pushName,
-        evolutionClient
-      );
-    } catch (error) {
-      console.error("FlowEngine processIncoming error:", error);
-      return { action: "error" };
-    }
-  }
-
-  /**
-   * Inicia uma nova sessão de fluxo
-   */
-  private static async startSession(
-    flow: any,
-    phone: string,
-    tenantId: string,
-    pushName?: string,
-    evolutionClient?: EvolutionClient
-  ): Promise<{
-    action: "new_session";
-    session?: FlowSession;
-    response?: string;
-  }> {
-    const firstStep = flow.steps?.[0];
-
-    // Criar sessão no banco
-    const session = await prisma.flowSession.create({
-      data: {
-        tenantId,
-        flowId: flow.id,
-        currentStepId: firstStep?.id || null,
-        customerPhone: phone,
-        customerName: pushName || null,
-        status: "active",
-        variables: {},
-        loopCounters: {},
-      },
-    });
-
-    // Pre-carregar variáveis de produto dos passos
-    const productVars: Record<string, string> = {};
-    for (const step of (flow.steps || [])) {
-      if (step.productId) {
-        const product = await prisma.product.findUnique({ where: { id: step.productId } });
-        if (product) {
-          productVars["product.name"] = product.name;
-          productVars["product.price"] = String(product.price);
-          productVars["product.fileUrl"] = product.fileUrl || "";
-          productVars["product.extraFiles"] = JSON.stringify(product.extraFiles || []);
+      // Pre-carregar variáveis de produto
+      const productVars: Record<string, string> = {};
+      for (const step of flow.steps) {
+        if (step.productId) {
+          const product = await prisma.product.findUnique({ where: { id: step.productId } });
+          if (product) {
+            productVars["product.name"] = product.name;
+            productVars["product.price"] = String(product.price);
+            productVars["product.fileUrl"] = product.fileUrl || "";
+            productVars["product.extraFiles"] = JSON.stringify(product.extraFiles || []);
+          }
         }
       }
+      await prisma.flowSession.update({ where: { id: newSession.id }, data: { variables: productVars } });
+      (newSession as any).variables = productVars;
+
+      return await FlowEngine.runFlow(newSession, null, evolutionClient, pushName);
+    } catch (error: any) {
+      console.error("[FLOW-ERR]", error.message);
+      return { action: "error" as const };
     }
-    await prisma.flowSession.update({ where: { id: session.id }, data: { variables: productVars } });
-    // Atualizar objeto local para o executeStep usar as variáveis
-    (session as any).variables = productVars;
-
-    // Executar passos em sequência até chegar em interação ou fim
-    if (firstStep && evolutionClient) {
-    let currentStep = firstStep;
-    let allVars = { ...productVars };
-    let pixId: string | undefined;
-    let lastStatus = "active";
-    let nextId: string | null = firstStep?.id || null;
-
-    while (currentStep && evolutionClient) {
-      console.log(`[FLOW-STEP] executing step type=${currentStep.type} label=${currentStep.label}`);
-      // Parar ANTES de executar passos que dependem de interação externa
-      if (currentStep.type === "WAIT_RESPONSE") { console.log("[FLOW-STOP] breaking at WAIT_RESPONSE"); break; }
-      if (currentStep.type === "GENERATE_PIX") { console.log("[FLOW-STOP] breaking at GENERATE_PIX"); break; }
-
-      const result = await FlowEngine.executeStep(
-        currentStep as FlowStepData,
-        { ...session, variables: allVars },
-        phone,
-        tenantId,
-        evolutionClient,
-        flow.steps as FlowStepData[]
-      );
-      allVars = { ...allVars, ...result.variables };
-      pixId = result.pixId || pixId;
-      lastStatus = result.status;
-      nextId = result.nextStepId;
-
-      // Parar se não tem próximo
-      if (!result.nextStepId) break;
-      // Ir pro próximo
-      currentStep = flow.steps?.find((s: any) => s.id === result.nextStepId);
-    }
-
-    // Atualizar currentStepId no banco
-    await prisma.flowSession.update({
-      where: { id: session.id },
-      data: {
-        currentStepId: nextId,
-        status: lastStatus,
-        variables: allVars,
-        currentPixId: pixId || null,
-      },
-    });
-
-    const loopCounters: Record<string, number> = {};
-    return {
-      action: "new_session",
-      session: {
-        id: session.id,
-        flowId: session.flowId,
-        tenantId: session.tenantId,
-        customerPhone: session.customerPhone,
-        customerName: session.customerName,
-        currentStepId: nextId,
-        status: lastStatus as FlowSession["status"],
-        variables: allVars,
-        loopCounters,
-        currentPixId: pixId || null,
-      },
-    };
-    }
-
-    return {
-      action: "new_session",
-      session: {
-        id: session.id,
-        flowId: session.flowId,
-        tenantId: session.tenantId,
-        currentStepId: session.currentStepId,
-        customerPhone: session.customerPhone,
-        customerName: session.customerName || undefined,
-        status: "active",
-        variables: productVars,
-        loopCounters: {},
-      },
-    };
   }
 
-  /**
-   * Continua uma sessão existente após resposta do cliente
-   */
-  private static async continueSession(
-    session: any,
-    message: string,
-    pushName?: string,
-    evolutionClient?: EvolutionClient
-  ): Promise<{
-    action: "continue_session";
-    session?: FlowSession;
-    response?: string;
-  }> {
-    const steps: FlowStepData[] = session.flow?.steps || [];
-    const currentStep = steps.find(
-      (s: FlowStepData) => s.id === session.currentStepId
-    );
-    console.log(`[FLOW-CONT] msg="${message}" step=${currentStep?.type} sessionId=${session.id}`);
-
+  /** Loop unificado — inicia e continua fluxos */
+  private static async runFlow(
+    dbSession: any, incomingMessage: string | null, evolutionClient?: EvolutionClient, pushName?: string
+  ): Promise<{ action: string; session?: FlowSession; response?: string }> {
+    const steps: FlowStepData[] = dbSession.flow?.steps || [];
+    let currentStep: FlowStepData | undefined = steps.find((s: FlowStepData) => s.id === dbSession.currentStepId) || steps[0];
     if (!currentStep) {
-      // Fluxo acabou? Finalizar sessão
-      await prisma.flowSession.update({
-        where: { id: session.id },
-        data: { status: "completed", completedAt: new Date() },
-      });
+      await prisma.flowSession.update({ where: { id: dbSession.id }, data: { status: "completed", completedAt: new Date() } });
+      return { action: "completed" };
+    }
+
+    let vars = (dbSession.variables || {}) as Record<string, string>;
+    const loopCounters = (dbSession.loopCounters || {}) as Record<string, number>;
+    let pixId: string | undefined;
+    let status: string = dbSession.status || "active";
+
+    // Se tem mensagem recebida E o passo atual é interativo, processa a resposta primeiro
+    if (incomingMessage && currentStep && INTERACTIVE.includes(currentStep.type)) {
+      const result = await FlowEngine.processInteractiveStep(currentStep, steps, incomingMessage, vars, loopCounters, dbSession, evolutionClient);
+      vars = result.vars;
+      status = result.status;
+      currentStep = steps.find((s: FlowStepData) => s.id === result.nextStepId);
+      if (!currentStep || status === "waiting_pix") {
+        await FlowEngine.saveSession(dbSession.id, currentStep?.id || null, status, vars, loopCounters, pixId || null);
+        return { action: "continue_session" };
+      }
+    } else if (incomingMessage && currentStep && !INTERACTIVE.includes(currentStep.type)) {
+      // Mensagem recebida mas passo atual não é interativo — ignora (pode ser duplicata)
       return { action: "continue_session" };
     }
 
-    let allVars = (session.variables || {}) as Record<string, string>;
-    const loopCounters = (session.loopCounters || {}) as Record<
-      string,
-      number
-    >;
+    // Loop: executar passos não-interativos em sequência
+    while (currentStep && evolutionClient) {
+      console.log(`[FLOW] step ${currentStep.order}: ${currentStep.type}`);
 
-    // Atualizar último activity
-    await prisma.flowSession.update({
-      where: { id: session.id },
-      data: { lastActivityAt: new Date() },
-    });
-
-    // Determinar próximo passo baseado no tipo do passo atual
-    let nextStepId: string | null = null;
-    let responseText: string | undefined;
-
-    if (currentStep.type === "GENERATE_PIX") {
-      // Aguardando pagamento — fecha sessão velha pra permitir nova keyword match
-      await prisma.flowSession.update({ where: { id: session.id }, data: { status: "completed", completedAt: new Date() } });
-      return { action: "continue_session", session: { ...session, status: "completed" as any } };
-    }
-
-    if (
-      currentStep.type === "WAIT_RESPONSE" ||
-      currentStep.type === "CONDITION"
-    ) {
-      const config = (currentStep.config || {}) as Record<string, any>;
-
-      if (currentStep.type === "WAIT_RESPONSE") {
-        // Salvar resposta na variável
-        const varName = config.variable || "resposta";
-        allVars[varName] = message;
-
-        // Verificar se resposta é esperada
-        const expected = config.expected || [];
-        if (expected.length > 0 && matchResponse(message, expected)) {
-          nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
-        } else {
-          // Resposta não esperada — tenta retry ou fica aguardando
-          const maxR = config.maxRetries || 0;
-          const retryCount = loopCounters[currentStep.id] || 0;
-          if (maxR > 0 && retryCount < maxR && config.retryMessage) {
-            // Reenviar pergunta
-            loopCounters[currentStep.id] = retryCount + 1;
-            if (evolutionClient) {
-              await evolutionClient.sendText({ number: session.customerPhone, text: config.retryMessage });
-            }
-            nextStepId = currentStep.id; // Fica no mesmo passo aguardando
-          } else if (currentStep.altNextStepId) {
-            nextStepId = currentStep.altNextStepId; // Caminho alternativo
-          } else {
-            nextStepId = currentStep.id; // Fica aguardando (não encerra!)
-          }
-        }
-      } else if (currentStep.type === "CONDITION") {
-        // Avaliar condição e decidir rota
-        const varName = config.variable || "resposta";
-        const routes = config.routes || [];
-        let matched = false;
-
-        for (const route of routes) {
-          const routeValues = route.values || [];
-          if (
-            routeValues.includes("*") ||
-            matchResponse(message, routeValues, config.operator)
-          ) {
-            if (route.goToType === "next") {
-              nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
-            } else if (route.goToType === "alt") {
-              nextStepId = currentStep.altNextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
-            }
-            matched = true;
-            break;
-          }
-        }
-
-        if (!matched) {
-          // Fallback: caminho padrão
-          nextStepId = currentStep.nextStepId;
-        }
-      }
-    } else {
-      // Para passos que não dependem de resposta (SEND_MESSAGE, etc.)
-      // Avança para o próximo
-      nextStepId = currentStep.nextStepId;
-    }
-
-    // Se não tem próximo passo → completar sessão
-    if (!nextStepId) {
-      await prisma.flowSession.update({
-        where: { id: session.id },
-        data: {
-          status: "completed",
-          completedAt: new Date(),
-          variables: allVars,
-          loopCounters,
-        },
-      });
-      return {
-        action: "continue_session",
-        session: {
-          id: session.id,
-          flowId: session.flowId,
-          tenantId: session.tenantId,
-          currentStepId: null,
-          customerPhone: session.customerPhone,
-          customerName: session.customerName || undefined,
-          status: "completed",
-          variables: allVars,
-          loopCounters,
-        },
-      };
-    }
-
-    // Executar passos em sequência até chegar em interação ou fim
-    let cs = steps.find((s: FlowStepData) => s.id === nextStepId);
-    while (cs && evolutionClient) {
-      if (cs.type === "WAIT_RESPONSE" || cs.type === "GENERATE_PIX") {
-        // Para e espera input externo
-        await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables: allVars, loopCounters } });
-        return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables: allVars, loopCounters } };
+      // Parar em passos interativos
+      if (INTERACTIVE.includes(currentStep.type)) {
+        await FlowEngine.saveSession(dbSession.id, currentStep.id, currentStep.type === "GENERATE_PIX" ? "waiting_pix" : "active", vars, loopCounters, pixId || null);
+        return { action: "continue_session" };
       }
 
-      const result = await FlowEngine.executeStep(cs, session, session.customerPhone, session.tenantId, evolutionClient, steps);
-      allVars = { ...allVars, ...result.variables };
-      if (!result.nextStepId) break;
-      cs = steps.find((s: FlowStepData) => s.id === result.nextStepId) || undefined;
+      // Executar passo
+      const result = await FlowEngine.executeStep(currentStep, dbSession, vars, loopCounters, evolutionClient, steps);
+      vars = result.vars;
+      pixId = result.pixId || pixId;
+      status = result.status;
+
+      if (!result.nextStepId) {
+        await FlowEngine.saveSession(dbSession.id, null, "completed", vars, loopCounters, pixId || null);
+        return { action: "completed" };
+      }
+
+      currentStep = steps.find((s: FlowStepData) => s.id === result.nextStepId);
     }
 
-    // Atualizar sessão
-    if (cs?.id) {
-      await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: cs.type === "GENERATE_PIX" ? "waiting_pix" : "active", variables: allVars, loopCounters } });
-    }
-
+    await FlowEngine.saveSession(dbSession.id, currentStep?.id || null, status, vars, loopCounters, pixId || null);
     return { action: "continue_session" };
   }
 
-  /**
-   * Executa um passo específico
-   */
-  static async executeStep(
-    step: FlowStepData,
-    session: any,
-    phone: string,
-    tenantId: string,
-    evolutionClient: EvolutionClient,
-    allSteps: FlowStepData[]
-  ): Promise<{
-    nextStepId: string | null;
-    status: FlowSession["status"];
-    variables: Record<string, string>;
-    loopCounters?: Record<string, number>;
-    pixId?: string;
-    response?: string;
-    failureReason?: string;
-  }> {
-    const variables = { ...(session.variables || {}) };
-    const loopCounters = { ...(session.loopCounters || {}) };
+  /** Processa passo interativo (WAIT_RESPONSE) com a resposta do usuário */
+  private static async processInteractiveStep(
+    step: FlowStepData, steps: FlowStepData[], message: string,
+    vars: Record<string, string>, loopCounters: Record<string, number>,
+    session: any, evolutionClient?: EvolutionClient
+  ) {
     const config = (step.config || {}) as Record<string, any>;
+    let nextId: string | null = null;
+
+    if (step.type === "WAIT_RESPONSE") {
+      const varName = config.variable || "resposta";
+      vars[varName] = message;
+
+      if (matchResponse(message, config.expected || [])) {
+        // Resposta esperada → avança
+        nextId = step.nextStepId || steps.find(s => s.order === step.order + 1)?.id || null;
+      } else {
+        // Resposta não esperada
+        const maxRetries = config.maxRetries || 0;
+        const retryCount = loopCounters[step.id] || 0;
+        if (maxRetries > 0 && retryCount < maxRetries && config.retryMessage) {
+          loopCounters[step.id] = retryCount + 1;
+          if (evolutionClient) await evolutionClient.sendText({ number: session.customerPhone, text: config.retryMessage });
+          nextId = step.id; // Fica no mesmo passo
+        } else if (step.altNextStepId) {
+          nextId = step.altNextStepId; // Caminho alternativo
+        } else {
+          nextId = step.id; // Fica aguardando
+        }
+      }
+    } else if (step.type === "CONDITION") {
+      const matched = (config.routes || []).some((r: any) =>
+        r.values.includes("*") || matchResponse(message, r.values || [])
+      );
+      if (matched) {
+        nextId = step.nextStepId || steps.find(s => s.order === step.order + 1)?.id || null;
+      } else {
+        nextId = step.altNextStepId || step.id;
+      }
+    }
+
+    return { nextStepId: nextId, vars, status: "active", loopCounters };
+  }
+
+  /** Salva estado da sessão no banco */
+  private static async saveSession(id: string, stepId: string | null, status: string, vars: Record<string, string>, loops: Record<string, number>, pixId: string | null) {
+    await prisma.flowSession.update({ where: { id }, data: { currentStepId: stepId, status, variables: vars, loopCounters: loops, currentPixId: pixId, lastActivityAt: new Date() } });
+  }
+
+  // ===== EXECUTE STEP =====
+  static async executeStep(
+    step: FlowStepData, session: any, vars: Record<string, string>, loops: Record<string, number>,
+    evolutionClient: EvolutionClient, allSteps: FlowStepData[]
+  ): Promise<{ nextStepId: string | null; status: string; vars: Record<string, string>; pixId?: string; response?: string }> {
+    const config = (step.config || {}) as Record<string, any>;
+    const phone = session.customerPhone;
+    const tenantId = session.tenantId;
+
+    const nextOrAuto = (explicitNext: string | null | undefined) =>
+      explicitNext || allSteps.find(s => s.order === step.order + 1)?.id || null;
 
     switch (step.type) {
       case "SEND_MESSAGE": {
-        const text = renderTemplate(config.text || "", {
-          ...variables,
-          "customer.name": session.customerName || "Cliente",
-        });
-
-        try {
-          await evolutionClient.sendText({ number: phone, text });
-        } catch (err) {
-          console.error("Failed to send message:", err);
-        }
-
-        await prisma.messageLog.create({
-          data: {
-            tenantId,
-            sessionId: session.id,
-            customerPhone: phone,
-            direction: "outbound",
-            type: "text",
-            content: text,
-          },
-        });
-
-        // Auto-avançar: se não tem nextStepId, vai pro próximo por ordem
-        const nextByOrder = allSteps.find(s => s.order === step.order + 1);
-        return {
-          nextStepId: step.nextStepId || nextByOrder?.id || null,
-          status: "active",
-          variables,
-          loopCounters,
-          response: text,
-        };
+        const text = renderTemplate(config.text || "", { ...vars, "customer.name": session.customerName || "Cliente" });
+        try { await evolutionClient.sendText({ number: phone, text }); } catch {}
+        await prisma.messageLog.create({ data: { tenantId, sessionId: session.id, customerPhone: phone, direction: "outbound", type: "text", content: text } });
+        return { nextStepId: nextOrAuto(step.nextStepId), status: "active", vars, response: text };
       }
 
-      case "WAIT_RESPONSE": {
-        // Não envia nada, apenas espera a resposta do cliente
-        // A resposta será processada em continueSession
-        // Configurar timeout via BullMQ delayed job
-        variables._waitStartedAt = String(Date.now());
-        return {
-          nextStepId: step.id, // Aguarda no mesmo passo
-          status: "active",
-          variables,
-          loopCounters,
-        };
+      case "DELAY": {
+        await new Promise(r => setTimeout(r, (config.seconds || 2) * 1000));
+        return { nextStepId: nextOrAuto(step.nextStepId), status: "active", vars };
+      }
+
+      case "WAIT_RESPONSE": case "GENERATE_PIX": {
+        // Interativos — pausam o loop
+        return { nextStepId: step.id, status: step.type === "GENERATE_PIX" ? "waiting_pix" : "active", vars };
       }
 
       case "GENERATE_PIX": {
-        // Buscar tenant config para Mercado Pago
-        const tenant = await prisma.tenant.findUnique({
-          where: { id: tenantId },
-        });
+        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
         const token = tenant?.mercadopagoToken || "";
-        if (!token) {
-          return {
-            nextStepId: step.altNextStepId || null,
-            status: "failed",
-            variables,
-            loopCounters,
-            response: "Erro: token Mercado Pago não configurado",
-          };
-        }
+        if (!token) return { nextStepId: step.altNextStepId || null, status: "failed", vars };
 
-        // Buscar produto vinculado
-        let price = 0;
-        let description = config.description || "Produto digital";
-
+        let price = 0; let description = config.description || "Produto digital";
         if (step.productId) {
-          const product = await prisma.product.findUnique({
-            where: { id: step.productId },
-          });
-          if (product) {
-            price = product.price;
-            description = product.name;
-            variables["product.name"] = product.name;
-            variables["product.price"] = String(product.price);
-            variables["product.fileUrl"] = product.fileUrl;
-          }
-        } else if (config.valueFrom) {
-          price = parseFloat(variables[config.valueFrom] || "0") || 0;
+          const p = await prisma.product.findUnique({ where: { id: step.productId } });
+          if (p) { price = p.price; description = p.name; vars["product.name"] = p.name; vars["product.price"] = String(p.price); vars["product.fileUrl"] = p.fileUrl || ""; vars["product.extraFiles"] = JSON.stringify(p.extraFiles || []); }
         }
 
         try {
           let pix: { id: string; pixCopyPaste: string; pixQrCodeBase64: string; pixExpiration: string };
           if (token.startsWith("inf_")) {
             const { InfinitePayClient } = await import("./infinitepay");
-            const ip = new InfinitePayClient(token);
-            const r = await ip.createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
+            const r = await new InfinitePayClient(token).createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
             pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
           } else {
-            const mp = new MercadoPagoClient(token);
-            const r = await mp.createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
+            const r = await new MercadoPagoClient(token).createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
             pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
           }
 
-          // Enviar PIX para o cliente
-          // Enviar resumo primeiro
-          await evolutionClient.sendText({
-            number: phone,
-            text: `💳 *Pagamento via PIX*\n\n📦 *Produto:* ${description}\n💰 *Valor:* R$ ${price.toFixed(2)}\n⏰ *Vence em:* ${config.expirationMinutes || 30} minutos`,
-          });
-          // Enviar código PIX isolado para fácil cópia
-          await evolutionClient.sendText({
-            number: phone,
-            text: pix.pixCopyPaste,
-          });
+          await evolutionClient.sendText({ number: phone, text: `💳 *Pagamento via PIX*\n\n📦 ${description}\n💰 R$ ${price.toFixed(2)}\n⏰ Vence em ${config.expirationMinutes || 30}min` });
+          await evolutionClient.sendText({ number: phone, text: pix.pixCopyPaste });
 
-          // Iniciar polling de status do PIX (backup, webhook é primary)
-          setTimeout(async () => {
-            try {
-              await FlowEngine.handlePixPayment(pix.id, tenantId);
-            } catch {}
-          }, 10000); // verifica após 10 segundos
-          setTimeout(async () => {
-            try {
-              await FlowEngine.handlePixPayment(pix.id, tenantId);
-            } catch {}
-          }, 30000); // verifica novamente após 30 segundos
+          setTimeout(() => FlowEngine.handlePixPayment(pix.id, tenantId).catch(() => {}), 10000);
+          setTimeout(() => FlowEngine.handlePixPayment(pix.id, tenantId).catch(() => {}), 30000);
 
-          // Registrar venda
-          await prisma.sale.create({
-            data: {
-              tenantId,
-              flowId: session.flowId,
-              sessionId: session.id,
-              productId: step.productId || "unknown",
-              customerPhone: phone,
-              customerName: session.customerName,
-              amount: price,
-              status: "PENDING",
-              externalId: pix.id,
-              pixCopyPaste: pix.pixCopyPaste,
-              pixQrCode: pix.pixQrCodeBase64,
-              pixExpiresAt: new Date(pix.pixExpiration),
-              metadata: { stepId: step.id, nextStepId: step.nextStepId },
-            },
-          });
+          await prisma.sale.create({ data: { tenantId, flowId: session.flowId, sessionId: session.id, productId: step.productId || "unknown", customerPhone: phone, customerName: session.customerName, amount: price, status: "PENDING", externalId: pix.id, pixCopyPaste: pix.pixCopyPaste, pixQrCode: pix.pixQrCodeBase64, pixExpiresAt: new Date(pix.pixExpiration), metadata: { stepId: step.id, nextStepId: step.nextStepId } } });
 
-          variables["pixId"] = pix.id;
-          variables["pixStatus"] = "pending";
-
-          return {
-            nextStepId: step.id, // Aguarda pagamento neste passo
-            status: "waiting_pix",
-            variables,
-            loopCounters,
-            pixId: pix.id,
-            response: pix.pixCopyPaste,
-          };
+          vars["pixId"] = pix.id;
+          return { nextStepId: step.id, status: "waiting_pix", vars, pixId: pix.id, response: pix.pixCopyPaste };
         } catch (err: any) {
-          console.error("Mercado Pago error:", err);
-          // Enviar mensagem de erro ao cliente
-          try {
-            await evolutionClient.sendText({
-              number: phone,
-              text: "Opa! Tive um problema ao gerar o PIX. Vou tentar de novo em instantes. Se o problema persistir, entre em contato com o suporte.",
-            });
-          } catch {}
-
-          return {
-            nextStepId: step.altNextStepId || null,
-            status: "failed",
-            variables,
-            loopCounters,
-            failureReason: err.message,
-          };
+          try { await evolutionClient.sendText({ number: phone, text: "Erro ao gerar PIX. Tente novamente." }); } catch {}
+          return { nextStepId: step.altNextStepId || null, status: "failed", vars };
         }
       }
 
       case "DELIVER_PRODUCT": {
-        const fileUrl = variables["product.fileUrl"] || config.fileUrl || "";
-        const productName = variables["product.name"] || "seu produto";
-        const deliveryMsg = renderTemplate(
-          config.message || "Aqui está seu produto! Obrigado pela compra.",
-          variables
-        );
+        const deliveryMsg = renderTemplate(config.message || "Aqui está seu produto! Obrigado.", vars);
+        await evolutionClient.sendText({ number: phone, text: `✅ *Pagamento confirmado!*\n\n${deliveryMsg}` });
 
-        // Enviar mensagem de entrega
-        await evolutionClient.sendText({
-          number: phone,
-          text: `✅ *Pagamento confirmado!*\n\n${deliveryMsg}`,
-        });
-
-        // Enviar arquivo(s)
         const sendOne = async (url: string, name: string) => {
           const full = url.startsWith("http") ? url : `http://portal:3000${url}`;
           const ext = (url.split(".").pop() || "").toLowerCase();
           const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov"].includes(ext) ? "video" : ["jpg","jpeg","png","gif"].includes(ext) ? "image" : "document";
           try { await evolutionClient.sendMedia({ number: phone, mediaType: type as any, mediaUrl: full, fileName: name, caption: `📎 ${name}` }); } catch {}
         };
-        const filesToSend: { url: string; name: string }[] = [];
-        if (fileUrl) filesToSend.push({ url: fileUrl, name: productName });
-        // Extra files do produto
-        try { const extra = JSON.parse(variables["product.extraFiles"] || "[]"); (extra as any[]).forEach((f: any) => filesToSend.push({ url: f.url, name: f.name || "Arquivo" })); } catch {}
-        for (const f of filesToSend) { await sendOne(f.url, f.name); }
 
-        // Atualizar venda como entregue
-        await prisma.sale.updateMany({
-          where: {
-            sessionId: session.id,
-            status: "PAID",
-            deliveryStatus: null,
-          },
-          data: {
-            deliveredAt: new Date(),
-            deliveryStatus: "sent",
-          },
-        });
+        const files: { url: string; name: string }[] = [];
+        const mainUrl = vars["product.fileUrl"] || config.fileUrl || "";
+        const productName = vars["product.name"] || "produto";
+        if (mainUrl) files.push({ url: mainUrl, name: productName });
+        try { JSON.parse(vars["product.extraFiles"] || "[]").forEach((f: any) => files.push({ url: f.url, name: f.name || "Arquivo" })); } catch {}
+        for (const f of files) await sendOne(f.url, f.name);
 
-        return {
-          nextStepId: step.nextStepId, // Geralmente null (fim do fluxo)
-          status: "completed",
-          variables,
-          loopCounters,
-          response: deliveryMsg,
-        };
+        if (files.length === 0 && mainUrl) {
+          await evolutionClient.sendText({ number: phone, text: `📎 Link: ${mainUrl.startsWith("http") ? mainUrl : `https://ezflow.com.br${mainUrl}`}` });
+        }
+
+        await prisma.sale.updateMany({ where: { sessionId: session.id, status: "PAID", deliveryStatus: null }, data: { deliveredAt: new Date(), deliveryStatus: "sent" } });
+        return { nextStepId: nextOrAuto(step.nextStepId), status: "completed", vars, response: deliveryMsg };
       }
 
       case "CONDITION": {
-        // CONDITION é processado em continueSession quando chega a resposta
-        // Aqui apenas avança (não deve acontecer — CONDITION sempre segue WAIT_RESPONSE)
-        return {
-          nextStepId: step.nextStepId || allSteps.find(s => s.order === step.order + 1)?.id || null,
-          status: "active",
-          variables,
-          loopCounters,
-        };
-      }
-
-      case "DELAY": {
-        const seconds = config.seconds || 2;
-        await new Promise(resolve => setTimeout(resolve, seconds * 1000));
-        const nextByOrder = allSteps.find(s => s.order === step.order + 1);
-        return {
-          nextStepId: step.nextStepId || nextByOrder?.id || null,
-          status: "active",
-          variables,
-          loopCounters,
-        };
+        return { nextStepId: nextOrAuto(step.nextStepId), status: "active", vars };
       }
 
       case "LOOP": {
-        const maxIter = config.maxIterations || 3;
-        const currentIter = loopCounters[step.id] || 0;
+        const max = config.maxIterations || 3;
+        const count = loops[step.id] || 0;
+        if (count >= max) return { nextStepId: nextOrAuto(step.nextStepId), status: "active", vars };
+
         const exitCond = config.exitCondition || "";
+        if (exitCond) { const m = exitCond.match(/variable:(\w+)=(.+)/); if (m && vars[m[1]] === m[2]) return { nextStepId: nextOrAuto(step.nextStepId), status: "active", vars }; }
 
-        // Verificar condição de saída
-        let shouldExit = currentIter >= maxIter;
-        if (exitCond) {
-          // Formato: "variable:nome=valor"
-          const match = exitCond.match(/variable:(\w+)=(.+)/);
-          if (match) {
-            const [, varName, expectedValue] = match;
-            if (variables[varName] === expectedValue) {
-              shouldExit = true;
-            }
-          }
-        }
-
-        if (shouldExit) {
-          return {
-            nextStepId: step.nextStepId, // Sai do loop
-            status: "active",
-            variables,
-            loopCounters,
-          };
-        }
-
-        // Continua loop: volta para o passo indicado
-        loopCounters[step.id] = currentIter + 1;
-        const backToStepId =
-          config.backToStepId ||
-          allSteps[config.backToStepIndex || 0]?.id ||
-          step.nextStepId;
-
-        return {
-          nextStepId: backToStepId,
-          status: "active",
-          variables,
-          loopCounters,
-        };
+        loops[step.id] = count + 1;
+        const backId = config.backToStepId || allSteps[config.backToStepIndex || 0]?.id || step.nextStepId;
+        return { nextStepId: backId || step.id, status: "active", vars };
       }
 
       default:
-        return {
-          nextStepId: step.nextStepId || allSteps.find(s => s.order === step.order + 1)?.id || null,
-          status: "active",
-          variables,
-          loopCounters,
-        };
+        return { nextStepId: nextOrAuto(step.nextStepId), status: "active", vars };
     }
   }
 
-  /**
-   * Processa webhook de confirmação de pagamento do Mercado Pago
-   */
-  static async handlePixPayment(
-    paymentId: string,
-    tenantId: string
-  ): Promise<{ success: boolean; delivered: boolean }> {
+  // ===== PIX Payment Handling =====
+  static async handlePixPayment(paymentId: string, tenantId: string): Promise<{ success: boolean; delivered: boolean }> {
     try {
-      // Buscar venda pelo externalId
-      const sale = await prisma.sale.findFirst({
-        where: { externalId: paymentId, tenantId },
-        include: { session: { include: { flow: { include: { steps: true } } } } },
-      });
+      const sale = await prisma.sale.findFirst({ where: { externalId: paymentId, tenantId }, include: { session: { include: { flow: { include: { steps: true } } } } } });
+      if (!sale) { console.log(`Sale not found: ${paymentId}`); return { success: false, delivered: false }; }
 
-      if (!sale) {
-        console.log(`Sale not found for payment ${paymentId}`);
-        return { success: false, delivered: false };
-      }
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+      if (!tenant?.mercadopagoToken) return { success: false, delivered: false };
 
-      // Buscar tenant config
-      const tenant = await prisma.tenant.findUnique({
-        where: { id: tenantId },
-      });
-
-      if (!tenant?.mercadopagoToken) {
-        return { success: false, delivered: false };
-      }
-
-      // Consultar status no Mercado Pago
       const mp = new MercadoPagoClient(tenant.mercadopagoToken);
       const payment = await mp.getPaymentStatus(paymentId);
 
       if (payment.status === "approved") {
-        // Atualizar venda
-        await prisma.sale.update({
-          where: { id: sale.id },
-          data: {
-            status: "PAID",
-            paidAt: new Date(),
-            metadata: {
-              ...(sale.metadata as any),
-              mpStatus: payment.status,
-              mpDetail: payment.statusDetail,
-            },
-          },
-        });
+        await prisma.sale.update({ where: { id: sale.id }, data: { status: "PAID", paidAt: new Date() } });
 
-        // Se tem sessão ativa, entregar produto
         const session = sale.session;
-        console.log(`[DELIVER] session=${session?.id} status=${session?.status}`);
         if (session && session.status === "waiting_pix") {
-          const metadata = sale.metadata as any;
-          const deliverStepId = metadata?.nextStepId;
-          console.log(`[DELIVER] metadata=${JSON.stringify(metadata)}`);
-
-          const waUrl = process.env.EZFLOW_WA_URL || "http://evolution:8080";
-          const waKey = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
-
           const steps = session.flow?.steps || [];
-          let deliverStep = deliverStepId ? steps.find((s: any) => s.id === deliverStepId) : null;
-          console.log(`[DELIVER] deliverStepId=${deliverStepId} foundById=${!!deliverStep} stepsCount=${steps.length}`);
-
-          if (!deliverStep) {
-            const currentStep = steps.find((s: any) => s.id === session.currentStepId);
-            deliverStep = steps.find((s: any) => s.type === "DELIVER_PRODUCT" && (!currentStep || s.order >= currentStep.order));
-            console.log(`[DELIVER] fallback search: currentStep=${currentStep?.type} deliverFound=${!!deliverStep}`);
-          }
+          const deliverStep = steps.find((s: any) => s.type === "DELIVER_PRODUCT") || null;
 
           if (deliverStep) {
-            const evolutionClient = new EvolutionClient({
-              baseUrl: waUrl,
-              apikey: waKey,
-              instance: "default",
-            });
-
-            console.log(`[DELIVER] executing delivery step ${deliverStep.type}...`);
-            await FlowEngine.executeStep(
-              deliverStep as FlowStepData,
-              session,
-              session.customerPhone,
-              tenantId,
-              evolutionClient,
-              steps as FlowStepData[]
-            );
-
-            // Atualizar sessão
-            await prisma.flowSession.update({
-              where: { id: session.id },
-              data: {
-                status: "completed",
-                completedAt: new Date(),
-                currentStepId: deliverStepId,
-              },
-            });
-
+            const waUrl = process.env.EZFLOW_WA_URL || "http://evolution:8080";
+            const waKey = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
+            const client = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: "default" });
+            await FlowEngine.executeStep(deliverStep as any, session, (session.variables || {}) as any, {}, client, steps as any);
+            await prisma.flowSession.update({ where: { id: session.id }, data: { status: "completed", completedAt: new Date() } });
             return { success: true, delivered: true };
           }
         }
-
-        return { success: true, delivered: false };
-      } else if (
-        ["cancelled", "refunded", "charged_back"].includes(payment.status)
-      ) {
-        await prisma.sale.update({
-          where: { id: sale.id },
-          data: { status: "CANCELLED" },
-        });
-
-        // Se tem sessão, voltar ou encerrar
-        if (sale.session) {
-          await prisma.flowSession.update({
-            where: { id: sale.session.id },
-            data: { status: "failed", failureReason: "payment_cancelled" },
-          });
-        }
-
         return { success: true, delivered: false };
       }
 
-      // Status pending ou in_process → ainda aguardando
+      if (["cancelled", "refunded"].includes(payment.status)) {
+        await prisma.sale.update({ where: { id: sale.id }, data: { status: "CANCELLED" } });
+      }
       return { success: true, delivered: false };
-    } catch (error) {
-      const err = error as any; console.error("[DELIVER-ERR]", err.message || err, err.stack?.split("\n")?.[1] || "");
-      return { success: false, delivered: false };
-    }
+    } catch (err) { console.error("[PIX-ERR]", err); return { success: false, delivered: false }; }
   }
 
-  /**
-   * Lida com timeout de sessão (WAIT_RESPONSE sem resposta)
-   */
   static async handleTimeout(sessionId: string): Promise<void> {
-    const session = await prisma.flowSession.findUnique({
-      where: { id: sessionId },
-      include: { flow: { include: { steps: true } }, tenant: true },
-    });
-
+    const session = await prisma.flowSession.findUnique({ where: { id: sessionId }, include: { tenant: true } });
     if (!session || session.status !== "active") return;
-
-    const steps = session.flow?.steps || [];
-    const currentStep = steps.find(
-      (s: any) => s.id === session.currentStepId
-    );
-
-    if (!currentStep) return;
-
-    const config = (currentStep.config || {}) as Record<string, any>;
-    const onTimeout = config.onTimeout || "exit";
-    const loopCounters = (session.loopCounters || {}) as Record<
-      string,
-      number
-    >;
-
-    if (onTimeout === "retry") {
-      const retryCount = loopCounters[currentStep.id] || 0;
-      if (retryCount < (config.maxRetries || 2) && config.retryMessage) {
-        // Reenviar mensagem
-        if (
-          session.tenant.evolutionUrl &&
-          session.tenant.evolutionApikey
-        ) {
-          const evolutionClient = new EvolutionClient({
-            baseUrl: session.tenant.evolutionUrl,
-            apikey: session.tenant.evolutionApikey,
-            instance: "default",
-          });
-
-          await evolutionClient.sendText({
-            number: session.customerPhone,
-            text: config.retryMessage,
-          });
-        }
-
-        loopCounters[currentStep.id] = retryCount + 1;
-        await prisma.flowSession.update({
-          where: { id: sessionId },
-          data: {
-            loopCounters,
-            lastActivityAt: new Date(),
-          },
-        });
-        return;
-      }
-    }
-
-    // Encerrar como timeout
-    await prisma.flowSession.update({
-      where: { id: sessionId },
-      data: {
-        status: "timed_out",
-        failureReason: "timeout",
-        completedAt: new Date(),
-      },
-    });
-
-    // Mensagem de despedida se Evolution configurado
-    if (
-      session.tenant?.evolutionUrl &&
-      session.tenant?.evolutionApikey
-    ) {
+    await prisma.flowSession.update({ where: { id: sessionId }, data: { status: "timed_out", failureReason: "timeout", completedAt: new Date() } });
+    if (session.tenant?.evolutionUrl && session.tenant?.evolutionApikey) {
       try {
-        const evolutionClient = new EvolutionClient({
-          baseUrl: session.tenant.evolutionUrl,
-          apikey: session.tenant.evolutionApikey,
-          instance: "default",
-        });
-
-        await evolutionClient.sendText({
-          number: session.customerPhone,
-          text: "😔 Não recebemos sua resposta. Se quiser continuar, é só mandar outra mensagem. Até logo!",
-        });
-      } catch (err) {
-        console.error("Timeout message error:", err);
-      }
+        const client = new EvolutionClient({ baseUrl: session.tenant.evolutionUrl, apikey: session.tenant.evolutionApikey, instance: "default" });
+        await client.sendText({ number: session.customerPhone, text: "😔 Não recebemos sua resposta. Até logo!" });
+      } catch {}
     }
   }
 }
