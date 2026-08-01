@@ -17,10 +17,10 @@ export default function UploadProductPage() {
   const router = useRouter();
   const [form, setForm] = useState({
     name: "",
-    keyword: "",
     price: "",
     description: "",
     fileUrl: "",
+    extraFiles: "",
     fileType: "",
     fileSize: "",
   });
@@ -51,8 +51,8 @@ export default function UploadProductPage() {
     e.preventDefault();
     setError("");
 
-    if (!form.name || !form.keyword || !form.price) {
-      setError("Nome, keyword e preço são obrigatórios.");
+    if (!form.name || !form.price) {
+      setError("Nome e preço são obrigatórios.");
       return;
     }
 
@@ -89,10 +89,11 @@ export default function UploadProductPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: form.name,
-        keyword: form.keyword,
+        keyword: form.name.toLowerCase().replace(/\s+/g, "-"),
         price: parseFloat(form.price),
         description: form.description || null,
         fileUrl: fileUrl || form.fileUrl,
+        extraFiles: (() => { try { return JSON.parse(form.extraFiles || "[]"); } catch { return []; } })(),
         fileType: form.fileType || null,
         fileSize: form.fileSize ? parseInt(form.fileSize) : null,
       }),
@@ -145,24 +146,22 @@ export default function UploadProductPage() {
           />
         </div>
 
-        {/* Keyword */}
+        {/* Arquivos extras */}
         <div>
           <label className="flex items-center gap-2 text-sm font-medium mb-1.5">
             <FileText className="w-3.5 h-3.5 text-muted-foreground" />
-            Keyword (palavra que dispara o fluxo)
+            Arquivos extras (JSON opcional)
           </label>
-          <input
-            name="keyword"
-            type="text"
-            value={form.keyword}
+          <textarea
+            name="extraFiles"
+            value={form.extraFiles}
             onChange={handleChange}
-            required
-            className="w-full px-4 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-            placeholder="Ex: colorir"
+            rows={2}
+            className="w-full px-4 py-2.5 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono resize-none"
+            placeholder='[{"url":"/uploads/arquivo2.pdf","name":"Nome do arquivo"}]'
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Quando o cliente enviar esta palavra no WhatsApp, o fluxo será
-            ativado
+            Lista em JSON com URLs de arquivos adicionais do produto
           </p>
         </div>
 
