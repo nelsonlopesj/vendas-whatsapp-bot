@@ -336,8 +336,9 @@ export class FlowEngine {
     let responseText: string | undefined;
 
     if (currentStep.type === "GENERATE_PIX") {
-      // Aguardando pagamento — não avança
-      return { action: "continue_session" };
+      // Aguardando pagamento — fecha sessão velha pra permitir nova keyword match
+      await prisma.flowSession.update({ where: { id: session.id }, data: { status: "completed", completedAt: new Date() } });
+      return { action: "continue_session", session: { ...session, status: "completed" as any } };
     }
 
     if (
