@@ -98,11 +98,30 @@ export const inboundWorker = new Worker(
   { connection, concurrency: 10 }
 );
 
-// Worker para processar timeouts
+// Worker para processar timeouts e lembretes PIX
 export const timeoutWorker = new Worker(
   "flow-timeouts",
   async (job) => {
-    const { sessionId } = job.data;
+    const { sessionId, message, reminder } = job.data;
+
+    // Lembrete de remarketing PIX
+    if (job.name === "pix-reminder" && reminder) {
+      const { default: prisma } = await import("./prisma");
+      const session = await prisma.flowSession.findUnique({
+        where: { id: sessionId },
+        include: { tenant: true },
+      });
+      if (!session || session.status !== "waiting_pix") return;
+
+      const waUrl = session.tenant?.evolutionUrl || process.env.EZFLOW_WA_URL || "http://evolution:8080";
+      const waKey = session.tenant?.evolutionApikey || process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
+      const { EvolutionClient } = await import("./evolution");
+      const evo = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: "default" });
+      await evo.sendText({ number: session.customerPhone, text: message });
+      return;
+    }
+
+    // Timeout de WAIT_RESPONSE
     await FlowEngine.handleTimeout(sessionId);
   },
   { connection }

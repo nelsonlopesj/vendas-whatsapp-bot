@@ -953,6 +953,47 @@ function StepConfigPanel({
           </div>
           <div className="border-t border-border pt-3 mt-3">
             <label className="block text-xs font-semibold mb-2">
+              🔔 Lembretes de Remarketing (opcional)
+            </label>
+            <label className="block text-xs font-medium mb-1">
+              1º Lembrete — após (minutos)
+            </label>
+            <input
+              type="number"
+              value={config.reminder1Minutes || ""}
+              onChange={(e) => onUpdateConfig({ reminder1Minutes: parseInt(e.target.value) || undefined })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-1"
+              placeholder="15"
+            />
+            <input
+              type="text"
+              value={config.reminder1Message || ""}
+              onChange={(e) => onUpdateConfig({ reminder1Message: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-2"
+              placeholder="Conseguiu fazer o PIX? Se tiver dúvidas, estou aqui!"
+            />
+
+            <label className="block text-xs font-medium mb-1">
+              2º Lembrete — após (minutos)
+            </label>
+            <input
+              type="number"
+              value={config.reminder2Minutes || ""}
+              onChange={(e) => onUpdateConfig({ reminder2Minutes: parseInt(e.target.value) || undefined })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-1"
+              placeholder="25"
+            />
+            <input
+              type="text"
+              value={config.reminder2Message || ""}
+              onChange={(e) => onUpdateConfig({ reminder2Message: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+              placeholder="O PIX expira em 5 min! Não perca essa oportunidade 🙏"
+            />
+          </div>
+
+          <div className="border-t border-border pt-3 mt-3">
+            <label className="block text-xs font-semibold mb-2">
               🤝 Módulo Confiança (opcional)
             </label>
             <label className="block text-xs font-medium mb-1">

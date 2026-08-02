@@ -778,6 +778,29 @@ export class FlowEngine {
             } catch {}
           }, 30000); // verifica novamente após 30 segundos
 
+          // Agendar lembretes de remarketing (opcionais)
+          const reminder1Min = config.reminder1Minutes;
+          const reminder2Min = config.reminder2Minutes;
+          try {
+            const { flowTimeoutQueue } = await import("./queue");
+            if (reminder1Min && config.reminder1Message) {
+              await flowTimeoutQueue.add(
+                "pix-reminder",
+                { sessionId: session.id, reminder: 1, message: config.reminder1Message },
+                { delay: reminder1Min * 60 * 1000, jobId: `pix-reminder1-${session.id}` }
+              );
+            }
+            if (reminder2Min && config.reminder2Message) {
+              await flowTimeoutQueue.add(
+                "pix-reminder",
+                { sessionId: session.id, reminder: 2, message: config.reminder2Message },
+                { delay: reminder2Min * 60 * 1000, jobId: `pix-reminder2-${session.id}` }
+              );
+            }
+          } catch (err: any) {
+            console.error(`[PIX-REMINDER] failed to schedule:`, err.message);
+          }
+
           // Registrar venda
           await prisma.sale.create({
             data: {
