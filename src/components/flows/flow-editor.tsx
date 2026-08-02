@@ -150,6 +150,7 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
   const [message, setMessage] = useState("");
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [insertAtIdx, setInsertAtIdx] = useState<number | null>(null);
 
   const selectedStep = steps.find((s) => s.id === selectedStepId);
 
@@ -476,18 +477,38 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
                   <div key={step.id} className="flex flex-col items-center">
                     {/* Botão Inserir Aqui */}
                     <div className="flex flex-col items-center group">
-                      <div className="w-0.5 h-3 bg-muted-foreground/20" />
+                      <div className="w-0.5 h-2 bg-muted-foreground/20" />
                       <div className="relative">
                         <button
                           className="w-5 h-5 rounded-full border border-dashed border-muted-foreground/30 text-[10px] text-muted-foreground/40 hover:border-primary/50 hover:text-primary hover:bg-primary/5 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
                           title="Inserir passo aqui"
-                          onClick={() => {
-                            const type = prompt("Tipo de passo (SEND_MESSAGE, SEND_AUDIO, SEND_FILE, WAIT_RESPONSE, GENERATE_PIX, DELIVER_PRODUCT, DELAY, CONDITION, LOOP):");
-                            if (type && STEP_TYPES.some(t => t.type === type)) addStep(type, idx - 1);
-                          }}
+                          onClick={() => setInsertAtIdx(insertAtIdx === idx ? null : idx)}
                         >+</button>
+                        {insertAtIdx === idx && (
+                          <div className="absolute left-6 top-0 z-50 w-48 bg-card border border-border rounded-lg shadow-lg p-1.5">
+                            <p className="text-[10px] text-muted-foreground px-2 py-1">Inserir após:</p>
+                            <div className="max-h-48 overflow-y-auto space-y-0.5">
+                              {STEP_TYPES.map((t) => (
+                                <button
+                                  key={t.type}
+                                  className="w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs hover:bg-secondary transition-colors text-left"
+                                  onClick={() => { addStep(t.type, idx - 1); setInsertAtIdx(null); }}
+                                >
+                                  <div className={clsx("p-1 rounded", t.colorLight)}>
+                                    <t.icon className={clsx("w-3 h-3", t.colorText)} />
+                                  </div>
+                                  {t.label}
+                                </button>
+                              ))}
+                            </div>
+                            <button
+                              className="w-full text-[10px] text-muted-foreground hover:text-foreground py-1 mt-1 border-t border-border"
+                              onClick={() => setInsertAtIdx(null)}
+                            >Cancelar</button>
+                          </div>
+                        )}
                       </div>
-                      <div className="w-0.5 h-3 bg-muted-foreground/20" />
+                      <div className="w-0.5 h-2 bg-muted-foreground/20" />
                     </div>
 
                     {/* Conexão (seta) */}
