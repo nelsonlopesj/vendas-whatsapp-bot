@@ -460,18 +460,24 @@ export class FlowEngine {
 
       // Módulo Confiança: se keyword configurada e mensagem matcha
       if (pixConfig.trustKeyword && matchKeyword(message, pixConfig.trustKeyword, "contains")) {
-        // Mensagem de boas-vindas primeiro
-        const welcomeMsg = pixConfig.trustWelcomeMessage || `🎁 Quero que você conheça meu trabalho. Vou liberar o material agora. Se ele realmente ajudar você, peço apenas uma contribuição. Você decide. ❤️`;
+        // Entrega o produto imediatamente
+        const welcomeMsg = pixConfig.trustWelcomeMessage || `🎁 Quero que você conheça meu trabalho. Vou liberar o material agora. Se ajudar, contribua. Você decide. ❤️`;
         allVars["_trustMode"] = "asking_amount";
         await prisma.flowSession.update({ where: { id: session.id }, data: { variables: allVars, lastActivityAt: new Date() } });
         if (evolutionClient) {
           await evolutionClient.sendText({ number: session.customerPhone, text: welcomeMsg });
-          // Pequena pausa e pergunta o valor
+          // Entrega o produto
+          const deliverStep = steps.find(s => s.type === "DELIVER_PRODUCT");
+          if (deliverStep) {
+            const mergedSession = { ...session, variables: allVars };
+            await FlowEngine.executeStep(deliverStep, mergedSession, session.customerPhone, session.tenantId, evolutionClient, steps);
+          }
+          // Pergunta o valor
           await new Promise(r => setTimeout(r, 1500));
-          const askMsg = pixConfig.trustAskMessage || `Qual valor gostaria de contribuir? Envie um valor entre R$${pixConfig.trustMinAmount || 10} e R$${pixConfig.trustMaxAmount || 20}.`;
+          const askMsg = pixConfig.trustAskMessage || `Qual valor gostaria de contribuir? (R$${pixConfig.trustMinAmount || 10}-R$${pixConfig.trustMaxAmount || 20})`;
           await evolutionClient.sendText({ number: session.customerPhone, text: askMsg });
         }
-        console.log(`[TRUST] trust keyword matched for session ${session.id?.slice(-8)}, sent welcome + asking amount`);
+        console.log(`[TRUST] trust keyword matched for session ${session.id?.slice(-8)}, delivered + asking amount`);
         return { action: "continue_session", session: { ...session, status: "waiting_pix", variables: allVars } };
       }
 
@@ -493,7 +499,7 @@ export class FlowEngine {
           await prisma.flowSession.update({ where: { id: session.id }, data: { variables: allVars, status: "waiting_pix", currentPixId: trustResult.pixId || null, lastActivityAt: new Date() } });
           return { action: "continue_session", session: { ...session, status: "waiting_pix", variables: allVars, currentPixId: trustResult.pixId || null } };
         } catch (err: any) {
-          console.error(`[TRUST] failed:`, err.message);
+          console.error(`[TRUST] failed:`, err.message, err.stack?.split("\n")?.[1] || "");
           if (evolutionClient) await evolutionClient.sendText({ number: session.customerPhone, text: "Ops! Tive um problema. Tente novamente mais tarde." });
           return { action: "continue_session" };
         }
@@ -710,9 +716,20 @@ export class FlowEngine {
           const welcomeMsg = pixConfig.trustWelcomeMessage || `🎁 Quero que você conheça meu trabalho. Vou liberar o material agora. Se ajudar, contribua. Você decide. ❤️`;
           const askMsg = pixConfig.trustAskMessage || `Qual valor gostaria de contribuir? (R$${pixConfig.trustMinAmount || 10}-R$${pixConfig.trustMaxAmount || 20})`;
           variables["_trustMode"] = "asking_amount";
+
+          // 1. Envia mensagem de boas-vindas
           await evolutionClient.sendText({ number: phone, text: welcomeMsg });
+
+          // 2. Entrega o produto imediatamente (antes de pedir valor)
+          const deliverStep = allSteps.find(s => s.type === "DELIVER_PRODUCT");
+          if (deliverStep) {
+            await FlowEngine.executeStep(deliverStep, { ...session, variables }, phone, tenantId, evolutionClient, allSteps);
+          }
+
+          // 3. Pergunta o valor da contribuição
           await new Promise(r => setTimeout(r, 1500));
           await evolutionClient.sendText({ number: phone, text: askMsg });
+
           return {
             nextStepId: step.id,
             status: "waiting_pix",
