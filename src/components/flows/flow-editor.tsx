@@ -80,6 +80,24 @@ const STEP_TYPES = [
     description: "Repete passos anteriores (com limite)",
   },
   {
+    type: "SEND_AUDIO",
+    label: "Enviar Áudio",
+    icon: MessageSquare,
+    color: "bg-cyan-500",
+    colorLight: "bg-cyan-500/10",
+    colorText: "text-cyan-500",
+    description: "Envia um arquivo de áudio (MP3, OGG) com legenda opcional",
+  },
+  {
+    type: "SEND_FILE",
+    label: "Enviar Arquivo",
+    icon: Package,
+    color: "bg-indigo-500",
+    colorLight: "bg-indigo-500/10",
+    colorText: "text-indigo-500",
+    description: "Envia um arquivo (PDF, imagem) com legenda opcional",
+  },
+  {
     type: "DELAY",
     label: "Delay",
     icon: Clock,
@@ -174,8 +192,8 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
       .catch(console.error);
   }, [flowId]);
 
-  // Adicionar novo passo
-  const addStep = (type: string) => {
+  // Adicionar novo passo (opcionalmente após um índice específico)
+  const addStep = (type: string, afterIndex?: number) => {
     const typeDef = STEP_TYPES.find((t) => t.type === type);
     const newStep: FlowStep = {
       id: crypto.randomUUID(),
@@ -185,7 +203,13 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
       nextStepId: undefined,
       altNextStepId: undefined,
     };
-    setSteps([...steps, newStep]);
+    if (afterIndex !== undefined && afterIndex >= 0) {
+      const newSteps = [...steps];
+      newSteps.splice(afterIndex + 1, 0, newStep);
+      setSteps(newSteps);
+    } else {
+      setSteps([...steps, newStep]);
+    }
     setSelectedStepId(newStep.id);
   };
 
@@ -450,6 +474,22 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
 
                 return (
                   <div key={step.id} className="flex flex-col items-center">
+                    {/* Botão Inserir Aqui */}
+                    <div className="flex flex-col items-center group">
+                      <div className="w-0.5 h-3 bg-muted-foreground/20" />
+                      <div className="relative">
+                        <button
+                          className="w-5 h-5 rounded-full border border-dashed border-muted-foreground/30 text-[10px] text-muted-foreground/40 hover:border-primary/50 hover:text-primary hover:bg-primary/5 flex items-center justify-center transition-all opacity-0 group-hover:opacity-100"
+                          title="Inserir passo aqui"
+                          onClick={() => {
+                            const type = prompt("Tipo de passo (SEND_MESSAGE, SEND_AUDIO, SEND_FILE, WAIT_RESPONSE, GENERATE_PIX, DELIVER_PRODUCT, DELAY, CONDITION, LOOP):");
+                            if (type && STEP_TYPES.some(t => t.type === type)) addStep(type, idx - 1);
+                          }}
+                        >+</button>
+                      </div>
+                      <div className="w-0.5 h-3 bg-muted-foreground/20" />
+                    </div>
+
                     {/* Conexão (seta) */}
                     {idx > 0 && (
                       <div className="flex flex-col items-center">
@@ -683,6 +723,10 @@ function getDefaultConfig(type: string): Record<string, any> {
         backToStepIndex: 0,
         exitCondition: "",
       };
+    case "SEND_AUDIO":
+      return { audioUrl: "", caption: "" };
+    case "SEND_FILE":
+      return { fileUrl: "", caption: "" };
     case "DELAY":
       return { seconds: 2 };
     default:
@@ -807,6 +851,80 @@ function StepConfigPanel({
             <p className="text-xs text-muted-foreground mt-1">
               Selecione um produto para que {"{{product.name}}"} e {"{{product.price}}"} sejam substituídos pelos valores reais
             </p>
+          </div>
+        </>
+      )}
+
+      {step.type === "SEND_AUDIO" && (
+        <>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Upload do áudio (MP3/OGG)
+            </label>
+            <input
+              type="file"
+              accept="audio/*,.mp3,.ogg,.m4a,.wav"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const form = new FormData();
+                form.append("file", file);
+                const res = await fetch("/api/upload", { method: "POST", body: form });
+                const data = await res.json();
+                if (data.url) onUpdateConfig({ audioUrl: data.url });
+              }}
+              className="w-full text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary file:text-primary-foreground hover:file:opacity-80"
+            />
+            {config.audioUrl && <p className="text-xs text-green-600 mt-1">✅ Áudio enviado: {config.audioUrl.split("/").pop()}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1 mt-2">
+              Legenda (opcional)
+            </label>
+            <textarea
+              value={config.caption || ""}
+              onChange={(e) => onUpdateConfig({ caption: e.target.value })}
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              placeholder="Ouça como funciona nosso material..."
+            />
+          </div>
+        </>
+      )}
+
+      {step.type === "SEND_FILE" && (
+        <>
+          <div>
+            <label className="block text-xs font-medium mb-1">
+              Upload do arquivo (PDF, imagem)
+            </label>
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const form = new FormData();
+                form.append("file", file);
+                const res = await fetch("/api/upload", { method: "POST", body: form });
+                const data = await res.json();
+                if (data.url) onUpdateConfig({ fileUrl: data.url });
+              }}
+              className="w-full text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary file:text-primary-foreground hover:file:opacity-80"
+            />
+            {config.fileUrl && <p className="text-xs text-green-600 mt-1">✅ Arquivo enviado: {config.fileUrl.split("/").pop()}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-medium mb-1 mt-2">
+              Legenda (opcional)
+            </label>
+            <textarea
+              value={config.caption || ""}
+              onChange={(e) => onUpdateConfig({ caption: e.target.value })}
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              placeholder="Aqui está uma amostra grátis do material..."
+            />
           </div>
         </>
       )}

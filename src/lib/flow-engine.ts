@@ -933,6 +933,64 @@ export class FlowEngine {
         };
       }
 
+      case "SEND_AUDIO": {
+        const audioUrl = config.audioUrl || "";
+        const caption = config.caption || "";
+        const ext = (audioUrl.split(".").pop() || "").toLowerCase();
+        const mediaType = ext === "ogg" ? "audio" as any : "audio" as any;
+
+        if (audioUrl) {
+          let mediaUrl = audioUrl;
+          if (audioUrl.startsWith("/uploads/")) {
+            try {
+              const { readFile } = await import("fs/promises");
+              const path = await import("path");
+              const filePath = path.join(process.cwd(), "public", audioUrl);
+              const buffer = await readFile(filePath);
+              mediaUrl = buffer.toString("base64");
+            } catch {}
+          }
+          try { await evolutionClient.sendMedia({ number: phone, mediaType, mediaUrl, caption: caption || undefined }); } catch (err: any) { console.error("sendAudio failed:", err.message); }
+        }
+        if (caption && audioUrl) {
+          // Legenda já foi enviada junto com o áudio
+        } else if (caption) {
+          await evolutionClient.sendText({ number: phone, text: caption });
+        }
+
+        const nextByOrder = allSteps.find(s => s.order === step.order + 1);
+        return { nextStepId: step.nextStepId || nextByOrder?.id || null, status: "active", variables, loopCounters };
+      }
+
+      case "SEND_FILE": {
+        const fileUrl = config.fileUrl || "";
+        const caption = config.caption || "";
+        const ext = (fileUrl.split(".").pop() || "").toLowerCase();
+        const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov"].includes(ext) ? "video" : ["jpg","jpeg","png","gif","webp"].includes(ext) ? "image" : "document";
+
+        if (fileUrl) {
+          let mediaUrl = fileUrl;
+          if (fileUrl.startsWith("/uploads/")) {
+            try {
+              const { readFile } = await import("fs/promises");
+              const path = await import("path");
+              const filePath = path.join(process.cwd(), "public", fileUrl);
+              const buffer = await readFile(filePath);
+              mediaUrl = buffer.toString("base64");
+            } catch {}
+          }
+          try { await evolutionClient.sendMedia({ number: phone, mediaType: type as any, mediaUrl, caption: caption || undefined, fileName: fileUrl.split("/").pop() }); } catch (err: any) { console.error("sendFile failed:", err.message); }
+        }
+        if (caption && fileUrl) {
+          // caption já foi junto
+        } else if (caption) {
+          await evolutionClient.sendText({ number: phone, text: caption });
+        }
+
+        const nextByOrder = allSteps.find(s => s.order === step.order + 1);
+        return { nextStepId: step.nextStepId || nextByOrder?.id || null, status: "active", variables, loopCounters };
+      }
+
       case "DELAY": {
         const seconds = config.seconds || 2;
         await new Promise(resolve => setTimeout(resolve, seconds * 1000));
