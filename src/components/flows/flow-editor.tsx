@@ -1169,6 +1169,17 @@ function StepConfigPanel({
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-2"
             />
 
+            <label className="block text-xs font-medium mb-1 mt-2">
+              Mensagem de boas-vindas
+            </label>
+            <textarea
+              value={config.trustWelcomeMessage || ""}
+              onChange={(e) => onUpdateConfig({ trustWelcomeMessage: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none mb-2"
+              placeholder="🎁 Quero que você conheça meu trabalho. Vou liberar o material agora. Se ajudar, contribua. Você decide. ❤️"
+            />
+
             <label className="block text-xs font-medium mb-1">
               Pergunta do valor
             </label>
