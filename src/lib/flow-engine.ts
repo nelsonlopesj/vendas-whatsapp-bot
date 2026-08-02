@@ -773,17 +773,19 @@ export class FlowEngine {
             });
           }
 
-          // Iniciar polling de status do PIX (backup, webhook é primary)
-          setTimeout(async () => {
-            try {
-              await FlowEngine.handlePixPayment(pix.id, tenantId);
-            } catch {}
-          }, 10000); // verifica após 10 segundos
-          setTimeout(async () => {
-            try {
-              await FlowEngine.handlePixPayment(pix.id, tenantId);
-            } catch {}
-          }, 30000); // verifica novamente após 30 segundos
+          // Polling robusto via BullMQ: verifica a cada 15 segundos até 30x
+          try {
+            const { flowTimeoutQueue } = await import("./queue");
+            for (let i = 1; i <= 30; i++) {
+              await flowTimeoutQueue.add(
+                "pix-poll",
+                { paymentId: pix.id, tenantId },
+                { delay: i * 15000, jobId: `pix-poll-${pix.id}-${i}` }
+              );
+            }
+          } catch (err: any) {
+            console.error(`[PIX-POLL] failed to schedule:`, err.message);
+          }
 
           // Agendar lembretes de remarketing (opcionais)
           const reminder1Min = config.reminder1Minutes;

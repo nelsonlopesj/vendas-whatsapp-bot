@@ -104,6 +104,13 @@ export const timeoutWorker = new Worker(
   async (job) => {
     const { sessionId, message, reminder } = job.data;
 
+    // Polling de status PIX
+    if (job.name === "pix-poll") {
+      const { paymentId, tenantId } = job.data;
+      await FlowEngine.handlePixPayment(paymentId, tenantId);
+      return;
+    }
+
     // Lembrete de remarketing PIX
     if (job.name === "pix-reminder" && reminder) {
       const { default: prisma } = await import("./prisma");
