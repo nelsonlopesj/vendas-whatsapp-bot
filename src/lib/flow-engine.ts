@@ -125,6 +125,78 @@ async function scheduleTimeout(
   }
 }
 
+// ===== Trust PIX Generator =====
+
+async function generateTrustPix(
+  session: any,
+  pixStep: FlowStepData,
+  amount: number,
+  tenantId: string,
+  evolutionClient: EvolutionClient,
+  allSteps: FlowStepData[]
+): Promise<{ pixId?: string; variables: Record<string, string> }> {
+  const config = (pixStep.config || {}) as Record<string, any>;
+  const phone = session.customerPhone;
+
+  // Buscar tenant para token
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+  const token = tenant?.mercadopagoToken || "";
+  if (!token) throw new Error("Token Mercado Pago não configurado");
+
+  // Buscar produto
+  let description = config.description || "Produto digital";
+  if (pixStep.productId) {
+    const product = await prisma.product.findUnique({ where: { id: pixStep.productId } });
+    if (product) description = product.name;
+  }
+
+  // Gerar PIX com valor customizado
+  let pix: { id: string; pixCopyPaste: string; pixQrCodeBase64: string; pixExpiration: string };
+  if (token.startsWith("inf_")) {
+    const { InfinitePayClient } = await import("./infinitepay");
+    const ip = new InfinitePayClient(token);
+    const r = await ip.createPixPayment({ amount, description, expirationMinutes: config.expirationMinutes || 30 });
+    pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
+  } else {
+    const { MercadoPagoClient } = await import("./mercadopago");
+    const mp = new MercadoPagoClient(token);
+    const r = await mp.createPixPayment({ amount, description, expirationMinutes: config.expirationMinutes || 30 });
+    pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
+  }
+
+  // Entregar produto (DELIVER_PRODUCT)
+  const deliverStep = allSteps.find(s => s.type === "DELIVER_PRODUCT");
+  if (deliverStep) {
+    await FlowEngine.executeStep(deliverStep, session, phone, tenantId, evolutionClient, allSteps);
+  }
+
+  // Mensagem de confiança + PIX
+  const trustMsg = config.trustMessage || `Aqui está! Espero que goste. Se puder contribuir com qualquer valor pelo PIX abaixo, sua boa-fé ajuda a manter esse projeto! 🙏`;
+  await evolutionClient.sendText({ number: phone, text: trustMsg });
+  await evolutionClient.sendText({ number: phone, text: pix.pixCopyPaste });
+
+  // Registrar venda com valor customizado
+  await prisma.sale.create({
+    data: {
+      tenantId,
+      flowId: session.flowId,
+      sessionId: session.id,
+      productId: pixStep.productId || "unknown",
+      customerPhone: phone,
+      customerName: session.customerName,
+      amount,
+      status: "PENDING",
+      externalId: pix.id,
+      pixCopyPaste: pix.pixCopyPaste,
+      pixQrCode: pix.pixQrCodeBase64,
+      pixExpiresAt: new Date(pix.pixExpiration),
+      metadata: { trustMode: true, originalSale: true },
+    },
+  });
+
+  return { pixId: pix.id, variables: { pixId: pix.id, pixStatus: "pending" } };
+}
+
 // ===== Flow Engine =====
 
 export class FlowEngine {
@@ -384,7 +456,43 @@ export class FlowEngine {
     let responseText: string | undefined;
 
     if (currentStep.type === "GENERATE_PIX" && session.status === "waiting_pix") {
-      // Aguardando pagamento — fecha sessão velha pra permitir nova keyword match
+      const pixConfig = (currentStep.config || {}) as Record<string, any>;
+
+      // Módulo Confiança: se keyword configurada e mensagem matcha
+      if (pixConfig.trustKeyword && matchKeyword(message, pixConfig.trustKeyword, "contains")) {
+        const askMsg = pixConfig.trustAskMessage || `Que legal! 😊 Qual valor gostaria de contribuir? Envie um valor entre R$${pixConfig.trustMinAmount || 10} e R$${pixConfig.trustMaxAmount || 20}.`;
+        allVars["_trustMode"] = "asking_amount";
+        await prisma.flowSession.update({ where: { id: session.id }, data: { variables: allVars, lastActivityAt: new Date() } });
+        if (evolutionClient) await evolutionClient.sendText({ number: session.customerPhone, text: askMsg });
+        console.log(`[TRUST] trust keyword matched for session ${session.id?.slice(-8)}, asking amount`);
+        return { action: "continue_session", session: { ...session, status: "waiting_pix", variables: allVars } };
+      }
+
+      // Modo confiança ativo: aguardando valor
+      if (allVars["_trustMode"] === "asking_amount") {
+        const min = pixConfig.trustMinAmount || 10;
+        const max = pixConfig.trustMaxAmount || 20;
+        const amount = parseFloat(message.replace(",", "."));
+        if (isNaN(amount) || amount < min || amount > max) {
+          const invalidMsg = pixConfig.trustInvalidMessage || `Por favor, envie um valor entre R$${min} e R$${max}.`;
+          if (evolutionClient) await evolutionClient.sendText({ number: session.customerPhone, text: invalidMsg });
+          return { action: "continue_session" };
+        }
+        // Valor válido: gerar novo PIX, entregar produto, enviar mensagem
+        console.log(`[TRUST] amount ${amount} accepted, generating PIX and delivering...`);
+        try {
+          const trustResult = await generateTrustPix(session, currentStep as FlowStepData, amount, tenantId, evolutionClient!, steps);
+          allVars = { ...allVars, ...trustResult.variables, _trustMode: "completed" };
+          await prisma.flowSession.update({ where: { id: session.id }, data: { variables: allVars, status: "waiting_pix", currentPixId: trustResult.pixId || null, lastActivityAt: new Date() } });
+          return { action: "continue_session", session: { ...session, status: "waiting_pix", variables: allVars, currentPixId: trustResult.pixId || null } };
+        } catch (err: any) {
+          console.error(`[TRUST] failed:`, err.message);
+          if (evolutionClient) await evolutionClient.sendText({ number: session.customerPhone, text: "Ops! Tive um problema. Tente novamente mais tarde." });
+          return { action: "continue_session" };
+        }
+      }
+
+      // Comportamento normal: fecha sessão pra permitir nova keyword match
       console.log(`[FLOW-CONT] GENERATE_PIX waiting_pix — closing session to allow keyword match`);
       await prisma.flowSession.update({ where: { id: session.id }, data: { status: "completed", completedAt: new Date() } });
       return { action: "continue_session", session: { ...session, status: "completed" as any } };

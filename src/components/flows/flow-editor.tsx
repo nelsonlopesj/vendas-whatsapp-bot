@@ -951,6 +951,78 @@ function StepConfigPanel({
               Mensagem separada enviada logo após o código PIX
             </p>
           </div>
+          <div className="border-t border-border pt-3 mt-3">
+            <label className="block text-xs font-semibold mb-2">
+              🤝 Módulo Confiança (opcional)
+            </label>
+            <label className="block text-xs font-medium mb-1">
+              Palavra-chave de confiança
+            </label>
+            <input
+              type="text"
+              value={config.trustKeyword || ""}
+              onChange={(e) => onUpdateConfig({ trustKeyword: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+              placeholder="confio"
+            />
+            <p className="text-xs text-muted-foreground mt-1 mb-2">
+              Se preenchido, ao digitar essa palavra a pessoa recebe o produto antes de pagar
+            </p>
+
+            <label className="block text-xs font-medium mb-1">
+              Valor mínimo (R$)
+            </label>
+            <input
+              type="number"
+              value={config.trustMinAmount || 10}
+              onChange={(e) => onUpdateConfig({ trustMinAmount: parseInt(e.target.value) || 10 })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-2"
+            />
+
+            <label className="block text-xs font-medium mb-1">
+              Valor máximo (R$)
+            </label>
+            <input
+              type="number"
+              value={config.trustMaxAmount || 20}
+              onChange={(e) => onUpdateConfig({ trustMaxAmount: parseInt(e.target.value) || 20 })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-2"
+            />
+
+            <label className="block text-xs font-medium mb-1">
+              Pergunta do valor
+            </label>
+            <input
+              type="text"
+              value={config.trustAskMessage || ""}
+              onChange={(e) => onUpdateConfig({ trustAskMessage: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-2"
+              placeholder="Que legal! Qual valor gostaria de contribuir? (R$10 a R$20)"
+            />
+
+            <label className="block text-xs font-medium mb-1">
+              Mensagem se valor inválido
+            </label>
+            <input
+              type="text"
+              value={config.trustInvalidMessage || ""}
+              onChange={(e) => onUpdateConfig({ trustInvalidMessage: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-2"
+              placeholder="Por favor, envie um valor entre R$10 e R$20."
+            />
+
+            <label className="block text-xs font-medium mb-1">
+              Mensagem pós-entrega + PIX
+            </label>
+            <textarea
+              value={config.trustMessage || ""}
+              onChange={(e) => onUpdateConfig({ trustMessage: e.target.value })}
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              placeholder="Aqui está seu PDF! Se gostar, contribua pelo PIX abaixo. Sua boa-fé mantém esse projeto! 🙏"
+            />
+          </div>
+
           <div>
             <label className="block text-xs font-medium mb-1">
               Se PIX expirar
