@@ -1181,6 +1181,21 @@ export class FlowEngine {
           },
         });
 
+        // Se é venda do módulo confiança, só envia agradecimento
+        const saleMeta = sale.metadata as any;
+        if (saleMeta?.trustMode) {
+          const waUrl = process.env.EZFLOW_WA_URL || "http://evolution:8080";
+          const waKey = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
+          const evo = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: "default" });
+          const thankMsg = `Muito obrigado pela sua contribuição de R$${sale.amount.toFixed(2)}! 🙏\n\nSua generosidade mantém esse projeto vivo. Deus abençoe! ❤️`;
+          try { await evo.sendText({ number: sale.customerPhone, text: thankMsg }); } catch {}
+          await prisma.sale.update({ where: { id: sale.id }, data: { deliveryStatus: "sent", deliveredAt: new Date() } });
+          if (session) {
+            await prisma.flowSession.update({ where: { id: session.id }, data: { status: "completed", completedAt: new Date() } });
+          }
+          return { success: true, delivered: true };
+        }
+
         // Se tem sessão ativa, entregar produto
         const session = sale.session;
         console.log(`[DELIVER] session=${session?.id} status=${session?.status}`);
