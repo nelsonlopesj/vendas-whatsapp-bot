@@ -773,14 +773,14 @@ export class FlowEngine {
             });
           }
 
-          // Polling robusto via BullMQ: verifica a cada 15 segundos até 30x
+          // Polling robusto via BullMQ: verifica a cada 30 segundos durante 30 min
           try {
             const { flowTimeoutQueue } = await import("./queue");
-            for (let i = 1; i <= 30; i++) {
+            for (let i = 1; i <= 60; i++) {
               await flowTimeoutQueue.add(
                 "pix-poll",
                 { paymentId: pix.id, tenantId },
-                { delay: i * 15000, jobId: `pix-poll-${pix.id}-${i}` }
+                { delay: i * 30000, jobId: `pix-poll-${pix.id}-${i}` }
               );
             }
           } catch (err: any) {

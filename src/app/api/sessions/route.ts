@@ -58,6 +58,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true, closed: result.count });
   }
 
+  if (action === "retry_delivery" && sessionId) {
+    const { FlowEngine } = await import("@/lib/flow-engine");
+    const sale = await prisma.sale.findFirst({ where: { sessionId, status: "PAID", deliveryStatus: { not: "sent" } } });
+    if (!sale?.externalId) return NextResponse.json({ error: "No pending PAID sale found" }, { status: 404 });
+    await prisma.sale.updateMany({ where: { id: sale.id }, data: { deliveryStatus: null } });
+    const result = await FlowEngine.handlePixPayment(sale.externalId, sale.tenantId);
+    return NextResponse.json({ success: result.delivered, ...result });
+  }
+
   if (action === "close_all") {
     const result = await prisma.flowSession.updateMany({
       where: {
