@@ -164,12 +164,6 @@ async function generateTrustPix(
     pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
   }
 
-  // Entregar produto (DELIVER_PRODUCT)
-  const deliverStep = allSteps.find(s => s.type === "DELIVER_PRODUCT");
-  if (deliverStep) {
-    await FlowEngine.executeStep(deliverStep, session, phone, tenantId, evolutionClient, allSteps);
-  }
-
   // Mensagem de confiança + PIX
   const trustMsg = config.trustMessage || `Aqui está! Espero que goste. Se puder contribuir com qualquer valor pelo PIX abaixo, sua boa-fé ajuda a manter esse projeto! 🙏`;
   await evolutionClient.sendText({ number: phone, text: trustMsg });
@@ -494,7 +488,7 @@ export class FlowEngine {
         // Valor válido: gerar novo PIX, entregar produto, enviar mensagem
         console.log(`[TRUST] amount ${amount} accepted, generating PIX and delivering...`);
         try {
-          const trustResult = await generateTrustPix(session, currentStep as FlowStepData, amount, tenantId, evolutionClient!, steps);
+          const trustResult = await generateTrustPix(session, currentStep as FlowStepData, amount, session.tenantId, evolutionClient!, steps);
           allVars = { ...allVars, ...trustResult.variables, _trustMode: "completed" };
           await prisma.flowSession.update({ where: { id: session.id }, data: { variables: allVars, status: "waiting_pix", currentPixId: trustResult.pixId || null, lastActivityAt: new Date() } });
           return { action: "continue_session", session: { ...session, status: "waiting_pix", variables: allVars, currentPixId: trustResult.pixId || null } };
