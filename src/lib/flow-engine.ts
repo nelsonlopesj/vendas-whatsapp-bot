@@ -125,6 +125,38 @@ async function scheduleTimeout(
   }
 }
 
+// ===== Product File Sender (sem mensagem de pagamento) =====
+
+async function sendProductFiles(session: any, phone: string, evolutionClient: EvolutionClient) {
+  const variables = (session.variables || {}) as Record<string, string>;
+  const fileUrl = variables["product.fileUrl"] || "";
+  const extraFiles = variables["product.extraFiles"] || "[]";
+
+  const filesToSend: { url: string; name: string }[] = [];
+  try { const extra = JSON.parse(extraFiles); (extra as any[]).forEach((f: any) => filesToSend.push({ url: f.url, name: f.name || "Arquivo" })); } catch {}
+  if (fileUrl && !filesToSend.some(f => f.url === fileUrl)) {
+    filesToSend.push({ url: fileUrl, name: variables["product.name"] || "Arquivo" });
+  }
+
+  for (const f of filesToSend) {
+    let mediaUrl = f.url;
+    if (f.url.startsWith("/uploads/")) {
+      try {
+        const { readFile } = await import("fs/promises");
+        const path = await import("path");
+        const filePath = path.join(process.cwd(), "public", f.url);
+        const buffer = await readFile(filePath);
+        mediaUrl = buffer.toString("base64");
+      } catch {}
+    }
+    const ext = (f.url.split(".").pop() || "").toLowerCase();
+    const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov"].includes(ext) ? "video" : ["jpg","jpeg","png","gif","webp"].includes(ext) ? "image" : "document";
+    try {
+      await evolutionClient.sendMedia({ number: phone, mediaType: type as any, mediaUrl, fileName: f.name, caption: `📎 ${f.name}` });
+    } catch (err: any) { console.error(`[TRUST] sendFile failed for ${f.name}:`, err.message); }
+  }
+}
+
 // ===== Trust PIX Generator =====
 
 async function generateTrustPix(
@@ -460,12 +492,8 @@ export class FlowEngine {
         await prisma.flowSession.update({ where: { id: session.id }, data: { variables: allVars, lastActivityAt: new Date() } });
         if (evolutionClient) {
           await evolutionClient.sendText({ number: session.customerPhone, text: welcomeMsg });
-          // Entrega o produto
-          const deliverStep = steps.find(s => s.type === "DELIVER_PRODUCT");
-          if (deliverStep) {
-            const mergedSession = { ...session, variables: allVars };
-            await FlowEngine.executeStep(deliverStep, mergedSession, session.customerPhone, session.tenantId, evolutionClient, steps);
-          }
+          // Entrega os arquivos (sem mensagem de pagamento)
+          await sendProductFiles({ ...session, variables: allVars }, session.customerPhone, evolutionClient);
           // Pergunta o valor
           await new Promise(r => setTimeout(r, 1500));
           const askMsg = pixConfig.trustAskMessage || `Qual valor gostaria de contribuir? (R$${pixConfig.trustMinAmount || 10}-R$${pixConfig.trustMaxAmount || 20})`;
@@ -714,11 +742,8 @@ export class FlowEngine {
           // 1. Envia mensagem de boas-vindas
           await evolutionClient.sendText({ number: phone, text: welcomeMsg });
 
-          // 2. Entrega o produto imediatamente (antes de pedir valor)
-          const deliverStep = allSteps.find(s => s.type === "DELIVER_PRODUCT");
-          if (deliverStep) {
-            await FlowEngine.executeStep(deliverStep, { ...session, variables }, phone, tenantId, evolutionClient, allSteps);
-          }
+          // 2. Entrega os arquivos (sem mensagem de pagamento)
+          await sendProductFiles({ ...session, variables }, phone, evolutionClient);
 
           // 3. Pergunta o valor da contribuição
           await new Promise(r => setTimeout(r, 1500));
