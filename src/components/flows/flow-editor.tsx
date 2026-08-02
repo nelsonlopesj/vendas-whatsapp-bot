@@ -892,7 +892,7 @@ function StepConfigPanel({
                 form.append("file", file);
                 const res = await fetch("/api/upload", { method: "POST", body: form });
                 const data = await res.json();
-                if (data.url) onUpdateConfig({ audioUrl: data.url });
+                if (data.url) onUpdateConfig({ audioUrl: data.url, audioName: data.filename || file.name });
               }}
               className="w-full text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary file:text-primary-foreground hover:file:opacity-80"
             />
@@ -929,7 +929,7 @@ function StepConfigPanel({
                 form.append("file", file);
                 const res = await fetch("/api/upload", { method: "POST", body: form });
                 const data = await res.json();
-                if (data.url) onUpdateConfig({ fileUrl: data.url });
+                if (data.url) onUpdateConfig({ fileUrl: data.url, fileName: data.filename || file.name });
               }}
               className="w-full text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary file:text-primary-foreground hover:file:opacity-80"
             />

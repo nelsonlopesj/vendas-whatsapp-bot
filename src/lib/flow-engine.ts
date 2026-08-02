@@ -943,8 +943,7 @@ export class FlowEngine {
       case "SEND_AUDIO": {
         const audioUrl = config.audioUrl || "";
         const caption = config.caption || "";
-        const ext = (audioUrl.split(".").pop() || "").toLowerCase();
-        const mediaType = ext === "ogg" ? "audio" as any : "audio" as any;
+        const audioName = config.audioName || audioUrl.split("/").pop() || "audio.m4a";
 
         if (audioUrl) {
           let mediaUrl = audioUrl;
@@ -957,12 +956,15 @@ export class FlowEngine {
               mediaUrl = buffer.toString("base64");
             } catch {}
           }
-          try { await evolutionClient.sendMedia({ number: phone, mediaType, mediaUrl, caption: caption || undefined }); } catch (err: any) { console.error("sendAudio failed:", err.message); }
-        }
-        if (caption && audioUrl) {
-          // Legenda já foi enviada junto com o áudio
-        } else if (caption) {
-          await evolutionClient.sendText({ number: phone, text: caption });
+          try {
+            await evolutionClient.sendMedia({
+              number: phone,
+              mediaType: "audio" as any,
+              mediaUrl,
+              caption: caption || undefined,
+              fileName: audioName,
+            });
+          } catch (err: any) { console.error("sendAudio failed:", err.message); }
         }
 
         const nextByOrder = allSteps.find(s => s.order === step.order + 1);
@@ -972,6 +974,7 @@ export class FlowEngine {
       case "SEND_FILE": {
         const fileUrl = config.fileUrl || "";
         const caption = config.caption || "";
+        const fileName = config.fileName || fileUrl.split("/").pop() || "arquivo";
         const ext = (fileUrl.split(".").pop() || "").toLowerCase();
         const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov"].includes(ext) ? "video" : ["jpg","jpeg","png","gif","webp"].includes(ext) ? "image" : "document";
 
@@ -986,12 +989,15 @@ export class FlowEngine {
               mediaUrl = buffer.toString("base64");
             } catch {}
           }
-          try { await evolutionClient.sendMedia({ number: phone, mediaType: type as any, mediaUrl, caption: caption || undefined, fileName: fileUrl.split("/").pop() }); } catch (err: any) { console.error("sendFile failed:", err.message); }
-        }
-        if (caption && fileUrl) {
-          // caption já foi junto
-        } else if (caption) {
-          await evolutionClient.sendText({ number: phone, text: caption });
+          try {
+            await evolutionClient.sendMedia({
+              number: phone,
+              mediaType: type as any,
+              mediaUrl,
+              caption: caption || undefined,
+              fileName,
+            });
+          } catch (err: any) { console.error("sendFile failed:", err.message); }
         }
 
         const nextByOrder = allSteps.find(s => s.order === step.order + 1);
