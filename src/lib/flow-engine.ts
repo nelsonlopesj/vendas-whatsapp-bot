@@ -607,8 +607,9 @@ export class FlowEngine {
         return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: "active", variables: allVars, loopCounters } };
       }
 
-      // GENERATE_PIX e outros: executa normalmente
-      const result = await FlowEngine.executeStep(cs, session, session.customerPhone, session.tenantId, evolutionClient, steps);
+      // GENERATE_PIX e outros: executa normalmente (com allVars mesclado)
+      const mergedSession = { ...session, variables: allVars };
+      const result = await FlowEngine.executeStep(cs, mergedSession, session.customerPhone, session.tenantId, evolutionClient, steps);
       allVars = { ...allVars, ...result.variables };
 
       // Se gerou PIX, salva e pausa para aguardar pagamento
@@ -699,6 +700,27 @@ export class FlowEngine {
       }
 
       case "GENERATE_PIX": {
+        const pixConfig = (step.config || {}) as Record<string, any>;
+
+        // Se módulo confiança ativo e resposta foi a keyword de confiança
+        const trustKeyword = pixConfig.trustKeyword;
+        const resposta = variables["resposta"] || variables["_lastMessage"] || "";
+        if (trustKeyword && matchKeyword(resposta, trustKeyword, "contains")) {
+          console.log(`[TRUST] confidence keyword matched at PIX generation, entering trust flow`);
+          const welcomeMsg = pixConfig.trustWelcomeMessage || `🎁 Quero que você conheça meu trabalho. Vou liberar o material agora. Se ajudar, contribua. Você decide. ❤️`;
+          const askMsg = pixConfig.trustAskMessage || `Qual valor gostaria de contribuir? (R$${pixConfig.trustMinAmount || 10}-R$${pixConfig.trustMaxAmount || 20})`;
+          variables["_trustMode"] = "asking_amount";
+          await evolutionClient.sendText({ number: phone, text: welcomeMsg });
+          await new Promise(r => setTimeout(r, 1500));
+          await evolutionClient.sendText({ number: phone, text: askMsg });
+          return {
+            nextStepId: step.id,
+            status: "waiting_pix",
+            variables,
+            loopCounters,
+          };
+        }
+
         // Buscar tenant config para Mercado Pago
         const tenant = await prisma.tenant.findUnique({
           where: { id: tenantId },
