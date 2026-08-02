@@ -1181,6 +1181,9 @@ export class FlowEngine {
           },
         });
 
+        // Se tem sessão ativa, entregar produto
+        const session = sale.session;
+
         // Se é venda do módulo confiança, só envia agradecimento
         const saleMeta = sale.metadata as any;
         if (saleMeta?.trustMode) {
@@ -1195,9 +1198,6 @@ export class FlowEngine {
           }
           return { success: true, delivered: true };
         }
-
-        // Se tem sessão ativa, entregar produto
-        const session = sale.session;
         console.log(`[DELIVER] session=${session?.id} status=${session?.status}`);
         if (session && session.status === "waiting_pix") {
           // Marca como "sending" pra evitar race condition com polling
