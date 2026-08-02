@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 
     const url = `/uploads/${filename}`;
 
-    return NextResponse.json({ url, filename, size: file.size }, { status: 201 });
+    return NextResponse.json({ url, filename, originalName: file.name, size: file.size }, { status: 201 });
   } catch (error) {
     console.error("Upload error:", error);
     return NextResponse.json(
