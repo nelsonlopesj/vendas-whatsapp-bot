@@ -1288,6 +1288,31 @@ export class FlowEngine {
         return { success: true, delivered: false };
       }
 
+      // PIX expirado
+      if (["expired", "rejected"].includes(payment.status)) {
+        await prisma.sale.update({ where: { id: sale.id }, data: { status: "CANCELLED" } });
+        if (session) {
+          // Buscar config do step PIX pra ver onExpired
+          const pixStep = session.flow?.steps?.find((s: any) => s.type === "GENERATE_PIX");
+          const pixConfig = (pixStep?.config || {}) as Record<string, any>;
+          const onExpired = pixConfig.onExpired || "exit";
+          const flowKeyword = session.flow?.triggerKeyword || "iniciar";
+
+          const waUrl = process.env.EZFLOW_WA_URL || "http://evolution:8080";
+          const waKey = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
+          const evo = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: "default" });
+
+          if (onExpired === "retry") {
+            try { await evo.sendText({ number: session.customerPhone, text: `Seu PIX expirou, mas ainda dá tempo! 😊 Digite *${flowKeyword}* para receber um novo código.` }); } catch {}
+          } else {
+            try { await evo.sendText({ number: session.customerPhone, text: `Seu PIX expirou. Se ainda tiver interesse, envie *${flowKeyword}* para começar novamente. 👋` }); } catch {}
+          }
+
+          await prisma.flowSession.update({ where: { id: session.id }, data: { status: "failed", failureReason: "pix_expired", completedAt: new Date() } });
+        }
+        return { success: true, delivered: false };
+      }
+
       // Status pending ou in_process → ainda aguardando
       return { success: true, delivered: false };
     } catch (error) {
