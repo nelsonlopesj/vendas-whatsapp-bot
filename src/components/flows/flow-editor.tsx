@@ -1035,6 +1035,21 @@ function StepConfigPanel({
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
             />
           </div>
+          <div>
+            <label className="block text-xs font-medium mb-1 mt-2">
+              Mensagem final (ao esgotar tentativas)
+            </label>
+            <textarea
+              value={config.finalMessage || ""}
+              onChange={(e) => onUpdateConfig({ finalMessage: e.target.value })}
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              placeholder="😔 Não recebemos mais sua resposta... envie *{{keyword}}* para reiniciar!"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Use {"{{keyword}}"} para incluir a palavra-chave do fluxo automaticamente
+            </p>
+          </div>
         </>
       )}
 

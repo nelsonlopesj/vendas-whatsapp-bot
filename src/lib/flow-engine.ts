@@ -1376,9 +1376,11 @@ export class FlowEngine {
       });
 
       const flowKeyword = session.flow?.triggerKeyword || "iniciar";
+      const defaultMsg = `😔 Não recebemos mais sua resposta e vou encerrar esta conversa.\n\nSe ainda tiver interesse, é só me mandar a palavra *${flowKeyword}* novamente que eu começo do início. Até logo! 👋`;
+      const finalMsg = (config.finalMessage || defaultMsg).replace(/\{\{keyword\}\}/g, flowKeyword);
       await evolutionClient.sendText({
         number: session.customerPhone,
-        text: `😔 Não recebemos mais sua resposta e vou encerrar esta conversa.\n\nSe ainda tiver interesse, é só me mandar a palavra *${flowKeyword}* novamente que eu começo do início. Até logo! 👋`,
+        text: finalMsg,
       });
     } catch (err) {
       console.error("Timeout message error:", err);
