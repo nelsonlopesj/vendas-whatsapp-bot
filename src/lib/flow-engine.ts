@@ -220,6 +220,23 @@ async function generateTrustPix(
     },
   });
 
+  // Agendar lembretes de remarketing (opcionais, igual fluxo normal)
+  const reminder1Min = config.reminder1Minutes;
+  const reminder2Min = config.reminder2Minutes;
+  try {
+    const { flowTimeoutQueue } = await import("./queue");
+    if (reminder1Min && config.reminder1Message) {
+      await flowTimeoutQueue.add("pix-reminder", { sessionId: session.id, reminder: 1, message: config.reminder1Message }, { delay: reminder1Min * 60 * 1000, jobId: `pix-reminder1-${session.id}` });
+    }
+    if (reminder2Min && config.reminder2Message) {
+      await flowTimeoutQueue.add("pix-reminder", { sessionId: session.id, reminder: 2, message: config.reminder2Message }, { delay: reminder2Min * 60 * 1000, jobId: `pix-reminder2-${session.id}` });
+    }
+    // Polling robusto a cada 30s por 30min
+    for (let i = 1; i <= 60; i++) {
+      await flowTimeoutQueue.add("pix-poll", { paymentId: pix.id, tenantId }, { delay: i * 30000, jobId: `pix-poll-${pix.id}-${i}` });
+    }
+  } catch (err: any) { console.error(`[TRUST-REMINDER] failed:`, err.message); }
+
   return { pixId: pix.id, variables: { pixId: pix.id, pixStatus: "pending" } };
 }
 
@@ -1348,7 +1365,7 @@ export class FlowEngine {
       },
     });
 
-    // Mensagem de despedida
+    // Mensagem de despedida com keyword para reiniciar
     try {
       const waUrl = session.tenant?.evolutionUrl || process.env.EZFLOW_WA_URL || "http://evolution:8080";
       const waKey = session.tenant?.evolutionApikey || process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
@@ -1358,9 +1375,10 @@ export class FlowEngine {
         instance: "default",
       });
 
+      const flowKeyword = session.flow?.triggerKeyword || "iniciar";
       await evolutionClient.sendText({
         number: session.customerPhone,
-        text: "😔 Não recebemos sua resposta. Se quiser continuar, é só mandar outra mensagem. Até logo!",
+        text: `😔 Não recebemos mais sua resposta e vou encerrar esta conversa.\n\nSe ainda tiver interesse, é só me mandar a palavra *${flowKeyword}* novamente que eu começo do início. Até logo! 👋`,
       });
     } catch (err) {
       console.error("Timeout message error:", err);
