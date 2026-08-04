@@ -34,9 +34,11 @@ export function SessionCleaner() {
     setLogs(data.logs || []);
   };
 
+  const [filter, setFilter] = useState("active,waiting_pix,timed_out,failed");
+
   const loadSessions = async () => {
     setLoading(true);
-    const res = await fetch("/api/sessions?status=active,waiting_pix");
+    const res = await fetch(`/api/sessions?status=${filter}`);
     const data = await res.json();
     setSessions(data.sessions || []);
     setLoading(false);
@@ -86,7 +88,16 @@ export function SessionCleaner() {
       <div className="p-4 flex items-center justify-between border-b border-border">
         <div className="flex items-center gap-2">
           <MessageSquare className="w-4 h-4 text-muted-foreground" />
-          <h2 className="font-semibold text-sm">Sessões Ativas / Travadas</h2>
+          <h2 className="font-semibold text-sm">Sessões</h2>
+          <select
+            value={filter}
+            onChange={(e) => { setFilter(e.target.value); setTimeout(() => loadSessions(), 50); }}
+            className="text-xs px-2 py-1 rounded-lg border border-input bg-background"
+          >
+            <option value="active,waiting_pix">Ativas / Aguardando PIX</option>
+            <option value="active,waiting_pix,timed_out">+ Expiradas</option>
+            <option value="active,waiting_pix,timed_out,failed">Todas</option>
+          </select>
         </div>
         <div className="flex gap-2">
           <button
@@ -158,9 +169,12 @@ export function SessionCleaner() {
                   <td className="px-4 py-2 text-xs">{s.flow?.name || "-"}</td>
                   <td className="px-4 py-2">
                     <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                      s.status === "waiting_pix" ? "bg-purple-500/10 text-purple-600" : "bg-blue-500/10 text-blue-600"
+                      s.status === "waiting_pix" ? "bg-purple-500/20 text-purple-400" :
+                      s.status === "active" ? "bg-blue-500/20 text-blue-400" :
+                      s.status === "timed_out" ? "bg-amber-500/20 text-amber-400" :
+                      "bg-red-500/20 text-red-400"
                     }`}>
-                      {s.status}
+                      {s.status === "timed_out" ? "expirada" : s.status}
                     </span>
                   </td>
                   <td className="px-4 py-2 text-xs text-muted-foreground hidden sm:table-cell">

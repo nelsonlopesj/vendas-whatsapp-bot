@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ logs });
   }
 
-  const status = req.nextUrl.searchParams.get("status") || "active,waiting_pix";
+  const status = req.nextUrl.searchParams.get("status") || "active,waiting_pix,timed_out,failed";
 
   // Auto-marcar expiradas antes de listar
   const now = new Date();
