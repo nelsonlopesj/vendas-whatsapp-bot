@@ -571,7 +571,10 @@ export class FlowEngine {
           if (replyMsg && evolutionClient) {
             await evolutionClient.sendText({ number: session.customerPhone, text: replyMsg });
           }
-          nextStepId = currentStep.id; // Fica aguardando (não encerra!)
+          nextStepId = currentStep.id; // Fica aguardando
+          // Reagendar timeout (foi cancelado no início do continueSession)
+          await prisma.flowSession.update({ where: { id: session.id }, data: { variables: allVars, loopCounters } });
+          scheduleTimeout(session.id, currentStep.id, allVars, loopCounters);
         }
       } else if (currentStep.type === "CONDITION") {
         // Avaliar condição e decidir rota
