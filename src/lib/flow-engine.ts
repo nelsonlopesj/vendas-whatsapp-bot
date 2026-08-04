@@ -1402,7 +1402,10 @@ export class FlowEngine {
 
       const flowKeyword = session.flow?.triggerKeyword || "iniciar";
       const defaultMsg = `😔 Não recebemos mais sua resposta e vou encerrar esta conversa.\n\nSe ainda tiver interesse, é só me mandar a palavra *${flowKeyword}* novamente que eu começo do início. Até logo! 👋`;
-      const finalMsg = (config.finalMessage || defaultMsg).replace(/\{\{keyword\}\}/g, flowKeyword);
+      const finalMsg = (config.finalMessage || defaultMsg)
+        .replace(/\\n/g, "\n")
+        .replace(/\{\{keyword\}\}/g, flowKeyword)
+        .replace(/\$\{flowKeyword\}/g, flowKeyword);
       await evolutionClient.sendText({
         number: session.customerPhone,
         text: finalMsg,
