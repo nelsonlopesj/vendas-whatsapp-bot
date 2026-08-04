@@ -566,21 +566,12 @@ export class FlowEngine {
         if (expected.length > 0 && matchResponse(message, expected)) {
           nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
         } else {
-          // Resposta não esperada — envia fallbackMessage ou retryMessage
-          const maxR = config.maxRetries || 0;
-          const retryCount = loopCounters[currentStep.id] || 0;
+          // Resposta não esperada — envia fallback sem consumir retries
           const replyMsg = config.fallbackMessage || config.retryMessage;
-          if (maxR > 0 && retryCount < maxR && replyMsg) {
-            loopCounters[currentStep.id] = retryCount + 1;
-            if (evolutionClient) {
-              await evolutionClient.sendText({ number: session.customerPhone, text: replyMsg });
-            }
-            nextStepId = currentStep.id; // Fica no mesmo passo aguardando
-          } else if (currentStep.altNextStepId) {
-            nextStepId = currentStep.altNextStepId; // Caminho alternativo
-          } else {
-            nextStepId = currentStep.id; // Fica aguardando (não encerra!)
+          if (replyMsg && evolutionClient) {
+            await evolutionClient.sendText({ number: session.customerPhone, text: replyMsg });
           }
+          nextStepId = currentStep.id; // Fica aguardando (não encerra!)
         }
       } else if (currentStep.type === "CONDITION") {
         // Avaliar condição e decidir rota
