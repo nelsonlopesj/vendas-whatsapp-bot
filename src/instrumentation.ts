@@ -33,7 +33,7 @@ export async function register() {
       const delay = Math.round(remaining * 1000);
 
       try {
-        const jobId = `timeout-${session.id}`;
+        const jobId = `timeout-${session.id}-${retryCount}`;
         const existing = await flowTimeoutQueue.getJob(jobId);
         if (!existing) {
           await flowTimeoutQueue.add("timeout", { sessionId: session.id, retryCount }, { delay, jobId });

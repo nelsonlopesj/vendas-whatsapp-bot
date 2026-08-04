@@ -117,7 +117,7 @@ async function scheduleTimeout(
     await flowTimeoutQueue.add(
       "timeout",
       { sessionId, stepId, retryCount },
-      { delay: timeoutSeconds * 1000, jobId: `timeout-${sessionId}` }
+      { delay: timeoutSeconds * 1000, jobId: `timeout-${sessionId}-${retryCount}` }
     );
     console.log(`[TIMEOUT] scheduled for session ${sessionId} in ${timeoutSeconds}s (retry ${retryCount})`);
   } catch (err: any) {
@@ -487,12 +487,12 @@ export class FlowEngine {
     // Cancelar timeout pendente (cliente respondeu)
     try {
       const { flowTimeoutQueue } = await import("./queue");
-      const timeoutJob = await flowTimeoutQueue.getJob(`timeout-${session.id}`);
-      if (timeoutJob) {
-        await timeoutJob.remove();
-        console.log(`[TIMEOUT] cancelled for session ${session.id} (customer responded)`);
+      for (let r = 0; r <= 5; r++) {
+        const jobId = `timeout-${session.id}-${r}`;
+        const timeoutJob = await flowTimeoutQueue.getJob(jobId);
+        if (timeoutJob) { await timeoutJob.remove(); console.log(`[TIMEOUT] cancelled ${jobId}`); }
       }
-    } catch {} // Ignora erro — timeout que não existe ou Redis fora
+    } catch {} // Ignora erro
 
     // Determinar próximo passo baseado no tipo do passo atual
     let nextStepId: string | null = null;
