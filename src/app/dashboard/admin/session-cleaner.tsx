@@ -206,12 +206,12 @@ export function SessionCleaner() {
               {logs.length === 0 ? (
                 <p className="text-xs text-muted-foreground text-center py-8">Carregando...</p>
               ) : (
-                logs.map((l, i) => (
+                [...logs].reverse().map((l, i) => (
                   <div key={i} className={`flex ${l.direction === "outbound" ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[80%] rounded-xl px-3 py-2 text-xs ${
                       l.direction === "outbound"
-                        ? "bg-primary/10 text-primary-foreground rounded-br-sm"
-                        : "bg-muted/50 text-foreground rounded-bl-sm"
+                        ? "bg-emerald-500 text-white rounded-br-sm"
+                        : "bg-card border border-border rounded-bl-sm"
                     }`}>
                       <p className="whitespace-pre-wrap">{l.content?.slice(0, 500)}</p>
                       <p className="text-[10px] opacity-50 mt-1">{new Date(l.createdAt).toLocaleTimeString("pt-BR")}</p>
