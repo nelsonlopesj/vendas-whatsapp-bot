@@ -842,6 +842,28 @@ export class FlowEngine {
             });
           }
 
+          // Link de pagamento via Checkout Pro (opcional)
+          if (config.paymentLink) {
+            try {
+              const checkoutUrl = token.startsWith("inf_")
+                ? null // InfinitePay não suporta checkout link
+                : await mp.createCheckoutLink({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
+              if (checkoutUrl) {
+                await evolutionClient.sendText({
+                  number: phone,
+                  text: `💻 *Ou pague pelo link:*\n${checkoutUrl}`,
+                });
+                // Guarda na venda
+                await prisma.sale.updateMany({
+                  where: { externalId: pix.id, tenantId },
+                  data: { metadata: { ...(saleMeta as any) || {}, checkoutUrl } },
+                });
+              }
+            } catch (err: any) {
+              console.error("[PIX-LINK] failed to create checkout link:", err.message);
+            }
+          }
+
           // Polling robusto via BullMQ: verifica a cada 30 segundos durante 30 min
           try {
             const { flowTimeoutQueue } = await import("./queue");

@@ -1105,6 +1105,18 @@ function StepConfigPanel({
               Mensagem separada enviada logo após o código PIX
             </p>
           </div>
+          <div className="flex items-center gap-2 mt-2">
+            <input
+              type="checkbox"
+              id="paymentLink"
+              checked={config.paymentLink === true}
+              onChange={(e) => onUpdateConfig({ paymentLink: e.target.checked })}
+              className="rounded border-input"
+            />
+            <label htmlFor="paymentLink" className="text-xs font-medium">
+              Enviar também link de pagamento (Checkout Pro — PIX)
+            </label>
+          </div>
           <div className="border-t border-border pt-3 mt-3">
             <label className="block text-xs font-semibold mb-2">
               🔔 Lembretes de Remarketing (opcional)

@@ -129,6 +129,53 @@ export class MercadoPagoClient {
   }
 
   /**
+   * Cria link de pagamento (Checkout Pro) — apenas PIX
+   */
+  async createCheckoutLink(params: {
+    amount: number;
+    description: string;
+    expirationMinutes?: number;
+  }): Promise<string> {
+    const expirationDate = new Date(
+      Date.now() + (params.expirationMinutes || 30) * 60 * 1000
+    );
+
+    const body = {
+      items: [{
+        title: params.description.slice(0, 100),
+        quantity: 1,
+        unit_price: params.amount,
+        currency_id: "BRL",
+      }],
+      payment_methods: {
+        excluded_payment_types: [
+          { id: "credit_card" },
+          { id: "debit_card" },
+          { id: "ticket" },
+        ],
+      },
+      expires: true,
+      expiration_date_to: expirationDate.toISOString(),
+    };
+
+    const res = await fetch(
+      "https://api.mercadopago.com/checkout/preferences",
+      {
+        method: "POST",
+        headers: this.headers,
+        body: JSON.stringify(body),
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error(`MercadoPago createCheckout failed: ${res.status} ${await res.text()}`);
+    }
+
+    const data = await res.json();
+    return data.init_point as string;
+  }
+
+  /**
    * Cancela um pagamento pendente
    */
   async cancelPayment(paymentId: string): Promise<boolean> {
