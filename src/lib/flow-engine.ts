@@ -842,18 +842,16 @@ export class FlowEngine {
             });
           }
 
-          // Link de pagamento via Checkout Pro (opcional)
-          if (config.paymentLink) {
+          // Link de pagamento via Checkout Pro (opcional, apenas Mercado Pago)
+          if (config.paymentLink && !token.startsWith("inf_")) {
             try {
-              const checkoutUrl = token.startsWith("inf_")
-                ? null // InfinitePay não suporta checkout link
-                : await mp.createCheckoutLink({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
+              const mpCheckout = new MercadoPagoClient(token);
+              const checkoutUrl = await mpCheckout.createCheckoutLink({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
               if (checkoutUrl) {
                 await evolutionClient.sendText({
                   number: phone,
                   text: `💻 *Ou pague pelo link:*\n${checkoutUrl}`,
                 });
-                // Guarda na venda
                 await prisma.sale.updateMany({
                   where: { externalId: pix.id, tenantId },
                   data: { metadata: { ...(saleMeta as any) || {}, checkoutUrl } },
