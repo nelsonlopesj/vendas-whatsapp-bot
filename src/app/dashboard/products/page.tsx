@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Plus, Package, Trash2, Pencil, DollarSign, Hash, X, Save, EyeOff, Eye } from "lucide-react";
+import { Plus, Package, Trash2, Pencil, DollarSign, Hash, X, Save, EyeOff, Eye, Upload } from "lucide-react";
 
 interface Product {
   id: string;
@@ -21,6 +21,8 @@ export default function ProductsPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Product | null>(null);
   const [editForm, setEditForm] = useState({ name: "", keyword: "", price: "", fileUrl: "", description: "", extraFiles: "" });
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [editExtraFiles, setEditExtraFiles] = useState<Array<{url: string; name: string}>>([]);
   const [saving, setSaving] = useState(false);
 
   const fetchProducts = useCallback(async () => {
@@ -55,8 +57,48 @@ export default function ProductsPage() {
       price: String(p.price),
       fileUrl: p.fileUrl || "",
       description: p.description || "",
-      extraFiles: JSON.stringify(p.extraFiles || []),
+      extraFiles: "",
     });
+    let extras: Array<{url: string; name: string}> = [];
+    try { extras = typeof p.extraFiles === "string" ? JSON.parse(p.extraFiles) : (p.extraFiles || []); } catch {}
+    setEditExtraFiles(extras);
+  };
+
+  const uploadFile = async (file: File): Promise<string> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/upload", { method: "POST", body: form });
+    if (!res.ok) throw new Error("Upload failed");
+    const data = await res.json();
+    return data.url;
+  };
+
+  const handleMainFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFile(true);
+    try {
+      const url = await uploadFile(file);
+      setEditForm({ ...editForm, fileUrl: url });
+    } catch { alert("Erro ao enviar arquivo"); }
+    setUploadingFile(false);
+  };
+
+  const handleExtraFileAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploadingFile(true);
+    try {
+      for (const file of files) {
+        const url = await uploadFile(file);
+        setEditExtraFiles(prev => [...prev, { url, name: file.name }]);
+      }
+    } catch { alert("Erro ao enviar arquivo"); }
+    setUploadingFile(false);
+  };
+
+  const removeExtraFile = (idx: number) => {
+    setEditExtraFiles(prev => prev.filter((_, i) => i !== idx));
   };
 
   const saveEdit = async () => {
@@ -71,7 +113,7 @@ export default function ProductsPage() {
         price: parseFloat(editForm.price),
         fileUrl: editForm.fileUrl,
         description: editForm.description,
-        extraFiles: (() => { try { return JSON.parse(editForm.extraFiles || "[]"); } catch { return []; } })(),
+        extraFiles: editExtraFiles,
       }),
     });
     setSaving(false);
@@ -167,19 +209,28 @@ export default function ProductsPage() {
                 <input type="number" step="0.01" value={editForm.price} onChange={e => setEditForm({...editForm, price: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm" />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1">URL do Arquivo</label>
-                <input type="text" value={editForm.fileUrl} onChange={e => setEditForm({...editForm, fileUrl: e.target.value})} className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm text-muted-foreground" />
+                <label className="block text-xs font-medium mb-1">Arquivo principal</label>
+                {editForm.fileUrl && (
+                  <p className="text-xs text-muted-foreground mb-1 truncate">Atual: {editForm.fileUrl.split("/").pop()}</p>
+                )}
+                <input type="file" onChange={handleMainFileUpload} disabled={uploadingFile}
+                  className="w-full text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary file:text-primary-foreground hover:file:opacity-80" />
               </div>
               <div>
-                <label className="block text-xs font-medium mb-1">Arquivos extras (JSON)</label>
-                <textarea
-                  value={editForm.extraFiles}
-                  onChange={e => setEditForm({...editForm, extraFiles: e.target.value})}
-                  rows={2}
-                  className="w-full px-3 py-2 rounded-lg border border-input bg-background text-xs font-mono"
-                  placeholder='[{"url":"/uploads/arquivo2.pdf","name":"Guia Extra"}]'
-                />
-                <p className="text-xs text-muted-foreground mt-1">Formato JSON com URLs e nomes de arquivos adicionais</p>
+                <label className="block text-xs font-medium mb-1">Arquivos extras</label>
+                {editExtraFiles.length > 0 && (
+                  <div className="space-y-1 mb-2 max-h-24 overflow-y-auto">
+                    {editExtraFiles.map((f, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs bg-muted/30 rounded px-2 py-1">
+                        <span className="truncate">{f.name}</span>
+                        <button onClick={() => removeExtraFile(i)} className="text-red-500 hover:text-red-700 ml-1"><X className="w-3 h-3" /></button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <input type="file" onChange={handleExtraFileAdd} disabled={uploadingFile} multiple
+                  className="w-full text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary file:text-primary-foreground hover:file:opacity-80" />
+                <p className="text-xs text-muted-foreground mt-1">Adicione ou remova arquivos. O upload substitui o anterior.</p>
               </div>
               <button onClick={saveEdit} disabled={saving} className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50">
                 <Save className="w-4 h-4" /> {saving ? "Salvando..." : "Salvar"}
