@@ -135,7 +135,9 @@ async function sendProductFiles(session: any, phone: string, evolutionClient: Ev
   const filesToSend: { url: string; name: string }[] = [];
   try { const extra = JSON.parse(extraFiles); (extra as any[]).forEach((f: any) => filesToSend.push({ url: f.url, name: f.name || "Arquivo" })); } catch {}
   if (fileUrl && !filesToSend.some(f => f.url === fileUrl)) {
-    filesToSend.push({ url: fileUrl, name: variables["product.name"] || "Arquivo" });
+    const ext = fileUrl.split(".").pop() || "";
+    const name = variables["product.name"] || "Arquivo";
+    filesToSend.push({ url: fileUrl, name: name.endsWith(`.${ext}`) ? name : `${name}.${ext}` });
   }
 
   for (const f of filesToSend) {
@@ -994,7 +996,8 @@ export class FlowEngine {
         try { const extra = JSON.parse(variables["product.extraFiles"] || "[]"); (extra as any[]).forEach((f: any) => filesToSend.push({ url: f.url, name: f.name || "Arquivo" })); } catch {}
         // Arquivo principal: só adiciona se não está nos extraFiles (backward compat)
         if (fileUrl && !filesToSend.some(f => f.url === fileUrl)) {
-          filesToSend.push({ url: fileUrl, name: productName });
+          const ext = fileUrl.split(".").pop() || "";
+          filesToSend.push({ url: fileUrl, name: productName.endsWith(`.${ext}`) ? productName : `${productName}.${ext}` });
         }
         for (const f of filesToSend) { await sendOne(f.url, f.name); }
 
