@@ -73,14 +73,19 @@ export default function ProductsPage() {
     return data.url;
   };
 
+  const [uploadMsg, setUploadMsg] = useState("");
+
   const handleMainFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingFile(true);
+    setUploadMsg(`Enviando ${file.name} (${(file.size/1024/1024).toFixed(1)}MB)...`);
     try {
       const url = await uploadFile(file);
       setEditForm({ ...editForm, fileUrl: url });
-    } catch { alert("Erro ao enviar arquivo"); }
+      setUploadMsg("✅ Arquivo enviado!");
+      setTimeout(() => setUploadMsg(""), 2000);
+    } catch { setUploadMsg("❌ Erro ao enviar arquivo"); }
     setUploadingFile(false);
   };
 
@@ -90,10 +95,13 @@ export default function ProductsPage() {
     setUploadingFile(true);
     try {
       for (const file of files) {
+        setUploadMsg(`Enviando ${file.name}...`);
         const url = await uploadFile(file);
         setEditExtraFiles(prev => [...prev, { url, name: file.name }]);
       }
-    } catch { alert("Erro ao enviar arquivo"); }
+      setUploadMsg("✅ Arquivos enviados!");
+      setTimeout(() => setUploadMsg(""), 2000);
+    } catch { setUploadMsg("❌ Erro ao enviar arquivo"); }
     setUploadingFile(false);
   };
 
@@ -232,8 +240,9 @@ export default function ProductsPage() {
                   className="w-full text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary file:text-primary-foreground hover:file:opacity-80" />
                 <p className="text-xs text-muted-foreground mt-1">Adicione ou remova arquivos. O upload substitui o anterior.</p>
               </div>
-              <button onClick={saveEdit} disabled={saving} className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50">
-                <Save className="w-4 h-4" /> {saving ? "Salvando..." : "Salvar"}
+              {uploadMsg && <p className={`text-xs ${uploadMsg.startsWith("✅") ? "text-green-500" : uploadMsg.startsWith("❌") ? "text-red-500" : "text-blue-500"}`}>{uploadMsg}</p>}
+              <button onClick={saveEdit} disabled={saving || uploadingFile} className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50">
+                <Save className="w-4 h-4" /> {uploadingFile ? "Aguardando upload..." : saving ? "Salvando..." : "Salvar"}
               </button>
             </div>
           </div>
