@@ -813,17 +813,32 @@ export class FlowEngine {
         }
 
         try {
+          // Retry: 3 tentativas para criar PIX (resiliência a falhas momentâneas do MP)
           let pix: { id: string; pixCopyPaste: string; pixQrCodeBase64: string; pixExpiration: string };
-          if (token.startsWith("inf_")) {
-            const { InfinitePayClient } = await import("./infinitepay");
-            const ip = new InfinitePayClient(token);
-            const r = await ip.createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
-            pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
-          } else {
-            const mp = new MercadoPagoClient(token);
-            const r = await mp.createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
-            pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
+          let pixError: any = null;
+          for (let attempt = 0; attempt < 3; attempt++) {
+            try {
+              if (token.startsWith("inf_")) {
+                const { InfinitePayClient } = await import("./infinitepay");
+                const ip = new InfinitePayClient(token);
+                const r = await ip.createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
+                pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
+              } else {
+                const mp = new MercadoPagoClient(token);
+                const r = await mp.createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
+                pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
+              }
+              pixError = null;
+              break; // sucesso, sai do loop
+            } catch (err: any) {
+              pixError = err;
+              if (attempt < 2) {
+                console.log(`[PIX-RETRY] attempt ${attempt + 1} failed, retrying in 2s...`);
+                await new Promise(r => setTimeout(r, 2000));
+              }
+            }
           }
+          if (pixError) throw pixError;
 
           // Enviar PIX para o cliente
           // Enviar resumo primeiro
@@ -853,10 +868,6 @@ export class FlowEngine {
                 await evolutionClient.sendText({
                   number: phone,
                   text: `💻 *Ou pague pelo link:*\n${checkoutUrl}`,
-                });
-                await prisma.sale.updateMany({
-                  where: { externalId: pix.id, tenantId },
-                  data: { metadata: { ...(saleMeta as any) || {}, checkoutUrl } },
                 });
               }
             } catch (err: any) {
