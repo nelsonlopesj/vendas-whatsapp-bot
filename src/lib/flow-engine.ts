@@ -235,8 +235,10 @@ async function generateTrustPix(
       await flowTimeoutQueue.add("pix-reminder", { sessionId: session.id, reminder: 2, message: config.reminder2Message }, { delay: reminder2Min * 60 * 1000, jobId: `pix-reminder2-${session.id}` });
       console.log(`[PIX-REMINDER] trust 2nd reminder scheduled in ${reminder2Min}min`);
     }
-    // Polling robusto a cada 30s por 30min
-    for (let i = 1; i <= 60; i++) {
+    // Polling robusto: a cada 30s até expirar
+    const expMinutes = config.expirationMinutes || 30;
+    const iterations = Math.ceil((expMinutes * 60) / 30);
+    for (let i = 1; i <= iterations; i++) {
       await flowTimeoutQueue.add("pix-poll", { paymentId: pix.id, tenantId }, { delay: i * 30000, jobId: `pix-poll-${pix.id}-${i}` });
     }
   } catch (err: any) { console.error(`[PIX-REMINDER] failed to schedule:`, err.message); }
@@ -877,10 +879,12 @@ export class FlowEngine {
             }
           }
 
-          // Polling robusto via BullMQ: verifica a cada 30 segundos durante 30 min
+          // Polling robusto via BullMQ: verifica a cada 30s até o PIX expirar
           try {
             const { flowTimeoutQueue } = await import("./queue");
-            for (let i = 1; i <= 60; i++) {
+            const expMinutes = config.expirationMinutes || 30;
+            const iterations = Math.ceil((expMinutes * 60) / 30); // a cada 30 segundos
+            for (let i = 1; i <= iterations; i++) {
               await flowTimeoutQueue.add(
                 "pix-poll",
                 { paymentId: pix.id, tenantId },
