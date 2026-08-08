@@ -229,15 +229,17 @@ async function generateTrustPix(
     const { flowTimeoutQueue } = await import("./queue");
     if (reminder1Min && config.reminder1Message) {
       await flowTimeoutQueue.add("pix-reminder", { sessionId: session.id, reminder: 1, message: config.reminder1Message }, { delay: reminder1Min * 60 * 1000, jobId: `pix-reminder1-${session.id}` });
+      console.log(`[PIX-REMINDER] trust 1st reminder scheduled in ${reminder1Min}min`);
     }
     if (reminder2Min && config.reminder2Message) {
       await flowTimeoutQueue.add("pix-reminder", { sessionId: session.id, reminder: 2, message: config.reminder2Message }, { delay: reminder2Min * 60 * 1000, jobId: `pix-reminder2-${session.id}` });
+      console.log(`[PIX-REMINDER] trust 2nd reminder scheduled in ${reminder2Min}min`);
     }
     // Polling robusto a cada 30s por 30min
     for (let i = 1; i <= 60; i++) {
       await flowTimeoutQueue.add("pix-poll", { paymentId: pix.id, tenantId }, { delay: i * 30000, jobId: `pix-poll-${pix.id}-${i}` });
     }
-  } catch (err: any) { console.error(`[TRUST-REMINDER] failed:`, err.message); }
+  } catch (err: any) { console.error(`[PIX-REMINDER] failed to schedule:`, err.message); }
 
   return { pixId: pix.id, variables: { pixId: pix.id, pixStatus: "pending" } };
 }
