@@ -900,6 +900,7 @@ export class FlowEngine {
                 { sessionId: session.id, reminder: 1, message: config.reminder1Message },
                 { delay: reminder1Min * 60 * 1000, jobId: `pix-reminder1-${session.id}` }
               );
+              console.log(`[PIX-REMINDER] 1st reminder scheduled in ${reminder1Min}min for session ${session.id?.slice(-8)}`);
             }
             if (reminder2Min && config.reminder2Message) {
               await flowTimeoutQueue.add(
@@ -907,6 +908,7 @@ export class FlowEngine {
                 { sessionId: session.id, reminder: 2, message: config.reminder2Message },
                 { delay: reminder2Min * 60 * 1000, jobId: `pix-reminder2-${session.id}` }
               );
+              console.log(`[PIX-REMINDER] 2nd reminder scheduled in ${reminder2Min}min for session ${session.id?.slice(-8)}`);
             }
           } catch (err: any) {
             console.error(`[PIX-REMINDER] failed to schedule:`, err.message);
