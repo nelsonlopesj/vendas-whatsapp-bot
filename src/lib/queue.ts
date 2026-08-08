@@ -111,20 +111,25 @@ export const timeoutWorker = new Worker(
       return;
     }
 
-    // Lembrete de remarketing PIX
+    // Lembrete de remarketing PIX / follow-up pós-expiração
     if (job.name === "pix-reminder" && reminder) {
       const { default: prisma } = await import("./prisma");
       const session = await prisma.flowSession.findUnique({
         where: { id: sessionId },
-        include: { tenant: true },
+        include: { tenant: true, flow: true },
       });
-      if (!session || session.status !== "waiting_pix") return;
+      if (!session) return;
+      // Para follow-up (reminder=3), não verifica status (a sessão já foi fechada como failed)
+      if (reminder <= 2 && session.status !== "waiting_pix") return;
+
+      const flowKeyword = session.flow?.triggerKeyword || "iniciar";
+      const text = message.replace(/\{\{keyword\}\}/g, flowKeyword);
 
       const waUrl = session.tenant?.evolutionUrl || process.env.EZFLOW_WA_URL || "http://evolution:8080";
       const waKey = session.tenant?.evolutionApikey || process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
       const { EvolutionClient } = await import("./evolution");
       const evo = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: "default" });
-      await evo.sendText({ number: session.customerPhone, text: message });
+      await evo.sendText({ number: session.customerPhone, text });
       return;
     }
 

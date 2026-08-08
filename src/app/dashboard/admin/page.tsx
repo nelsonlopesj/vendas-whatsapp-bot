@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { Users, CreditCard, Clock, CheckCircle2, XCircle, Sparkles, Trash2, RefreshCw } from "lucide-react";
 import { SessionCleaner } from "./session-cleaner";
+import { FunnelDashboard } from "./funnel-dashboard";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,9 @@ export default async function AdminPage() {
         <p className="text-sm font-semibold">Faturamento total da plataforma</p>
         <p className="text-2xl font-bold text-green-600">R$ {(totalRevenue._sum.amount || 0).toFixed(2)}</p>
       </div>
+
+      {/* Dashboard de Conversão */}
+      <FunnelDashboard />
 
       {/* Sessões Travadas */}
       <SessionCleaner />

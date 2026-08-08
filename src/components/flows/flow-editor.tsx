@@ -1121,6 +1121,29 @@ function StepConfigPanel({
             <label className="block text-xs font-semibold mb-2">
               🔔 Lembretes de Remarketing (opcional)
             </label>
+
+            <label className="block text-xs font-medium mb-1">
+              Follow-up pós-expiração (horas depois)
+            </label>
+            <input
+              type="number"
+              value={config.followUpHours || ""}
+              onChange={(e) => onUpdateConfig({ followUpHours: parseInt(e.target.value) || undefined })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-1"
+              placeholder="6"
+            />
+            <input
+              type="text"
+              value={config.followUpMessage || ""}
+              onChange={(e) => onUpdateConfig({ followUpMessage: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-2"
+              placeholder="Oi! Vi que você se interessou mas não finalizou. Ainda quer? Digite {{keyword}}!"
+            />
+            <p className="text-xs text-muted-foreground mb-2">Use {{keyword}} para incluir a palavra-chave do fluxo</p>
+
+            <label className="block text-xs font-medium mb-2">
+              Lembretes durante a espera
+            </label>
             <label className="block text-xs font-medium mb-1">
               1º Lembrete — após (minutos)
             </label>

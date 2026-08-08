@@ -1328,7 +1328,6 @@ export class FlowEngine {
       if (["expired", "rejected"].includes(payment.status)) {
         await prisma.sale.update({ where: { id: sale.id }, data: { status: "CANCELLED" } });
         if (session) {
-          // Buscar config do step PIX pra ver onExpired
           const pixStep = session.flow?.steps?.find((s: any) => s.type === "GENERATE_PIX");
           const pixConfig = (pixStep?.config || {}) as Record<string, any>;
           const onExpired = pixConfig.onExpired || "exit";
@@ -1338,10 +1337,26 @@ export class FlowEngine {
           const waKey = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
           const evo = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: "default" });
 
+          // Mensagem de expiração imediata
           if (onExpired === "retry") {
             try { await evo.sendText({ number: session.customerPhone, text: `Seu PIX expirou, mas ainda dá tempo! 😊 Digite *${flowKeyword}* para receber um novo código.` }); } catch {}
           } else {
             try { await evo.sendText({ number: session.customerPhone, text: `Seu PIX expirou. Se ainda tiver interesse, envie *${flowKeyword}* para começar novamente. 👋` }); } catch {}
+          }
+
+          // Agendar follow-up pós-expiração (horas depois)
+          const fupHours = pixConfig.followUpHours;
+          const fupMsg = pixConfig.followUpMessage;
+          if (fupHours && fupMsg) {
+            try {
+              const { flowTimeoutQueue } = await import("./queue");
+              await flowTimeoutQueue.add(
+                "pix-reminder",
+                { sessionId: session.id, reminder: 3, message: fupMsg },
+                { delay: fupHours * 3600 * 1000, jobId: `pix-followup-${session.id}` }
+              );
+              console.log(`[PIX-FOLLOWUP] scheduled in ${fupHours}h for session ${session.id?.slice(-8)}`);
+            } catch {}
           }
 
           await prisma.flowSession.update({ where: { id: session.id }, data: { status: "failed", failureReason: "pix_expired", completedAt: new Date() } });
