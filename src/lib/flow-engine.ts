@@ -1457,10 +1457,20 @@ export class FlowEngine {
         .replace(/\\n/g, "\n")
         .replace(/\{\{keyword\}\}/g, flowKeyword)
         .replace(/\$\{flowKeyword\}/g, flowKeyword);
-      await evolutionClient.sendText({
-        number: session.customerPhone,
-        text: finalMsg,
-      });
+      await evolutionClient.sendText({ number: session.customerPhone, text: finalMsg });
+
+      // Agendar follow-up pós-timeout (horas depois)
+      const fupHours = config.followUpHours;
+      const fupMsg = config.followUpMessage;
+      if (fupHours && fupMsg) {
+        const { flowTimeoutQueue } = await import("./queue");
+        await flowTimeoutQueue.add(
+          "pix-reminder",
+          { sessionId: sessionId, reminder: 3, message: fupMsg },
+          { delay: fupHours * 3600 * 1000, jobId: `conv-followup-${sessionId}` }
+        );
+        console.log(`[CONV-FOLLOWUP] scheduled in ${fupHours}h for session ${sessionId?.slice(-8)}`);
+      }
     } catch (err) {
       console.error("Timeout message error:", err);
     }

@@ -1050,6 +1050,28 @@ function StepConfigPanel({
               Use {"{{keyword}}"} para incluir a palavra-chave do fluxo automaticamente
             </p>
           </div>
+          <div className="border-t border-border pt-2 mt-2">
+            <label className="block text-xs font-medium mb-1">
+              Follow-up pós-timeout (horas depois)
+            </label>
+            <input
+              type="number"
+              value={config.followUpHours || ""}
+              onChange={(e) => onUpdateConfig({ followUpHours: parseInt(e.target.value) || undefined })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-1"
+              placeholder="12"
+            />
+            <input
+              type="text"
+              value={config.followUpMessage || ""}
+              onChange={(e) => onUpdateConfig({ followUpMessage: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+              placeholder={"Oi! Vi que você se interessou pelo produto mas não finalizou. Ainda quer? Digite {{keyword}}!"}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Enviada horas depois que a conversa expira. Use {"{{keyword}}"} para a palavra-chave.
+            </p>
+          </div>
         </>
       )}
 
