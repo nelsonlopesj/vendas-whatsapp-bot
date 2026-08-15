@@ -569,8 +569,54 @@ export class FlowEngine {
 
         // Verificar se resposta é esperada
         const expected = config.expected || [];
+        // Palavras de desinteresse ("não", "desisto"...): desviam para a rota de recusa
+        const altKeywords = config.altKeywords || [];
+
         if (expected.length > 0 && matchResponse(message, expected)) {
           nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
+        } else if (altKeywords.length > 0 && matchResponse(message, altKeywords)) {
+          // Se o próximo passo é um CONDITION, deixa o CONDITION decidir a rota
+          const naturalNext =
+            currentStep.nextStepId ||
+            steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id ||
+            null;
+          const nextIsCondition =
+            steps.find((s: FlowStepData) => s.id === naturalNext)?.type === "CONDITION";
+
+          if (nextIsCondition) {
+            nextStepId = naturalNext;
+          } else if (currentStep.altNextStepId) {
+            // Tem rota de recusa configurada: segue para ela
+            nextStepId = currentStep.altNextStepId;
+          } else {
+            // Sem rota de recusa: mensagem de despedida e encerra o fluxo
+            const flowKeyword = session.flow?.triggerKeyword || "iniciar";
+            const goodbye = (
+              config.altMessage ||
+              "Tudo bem! 😊 Se mudar de ideia, é só me enviar *{{keyword}}* novamente."
+            ).replace(/\{\{keyword\}\}/g, flowKeyword);
+            if (evolutionClient) {
+              await evolutionClient.sendText({ number: session.customerPhone, text: goodbye });
+            }
+            await prisma.flowSession.update({
+              where: { id: session.id },
+              data: { status: "completed", completedAt: new Date(), variables: allVars, loopCounters },
+            });
+            return {
+              action: "continue_session",
+              session: {
+                id: session.id,
+                flowId: session.flowId,
+                tenantId: session.tenantId,
+                currentStepId: null,
+                customerPhone: session.customerPhone,
+                customerName: session.customerName || undefined,
+                status: "completed",
+                variables: allVars,
+                loopCounters,
+              },
+            };
+          }
         } else {
           // Resposta não esperada — envia fallback sem consumir retries
           const replyMsg = config.fallbackMessage || config.retryMessage;
@@ -650,6 +696,38 @@ export class FlowEngine {
         await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: "active", variables: allVars, loopCounters } });
         scheduleTimeout(session.id, cs.id, allVars, loopCounters);
         return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: "active", variables: allVars, loopCounters } };
+      }
+
+      if (cs.type === "CONDITION") {
+        // CONDITION (balãozinho): avalia a resposta recém-recebida e decide a rota
+        const cConfig = (cs.config || {}) as Record<string, any>;
+        const routes = cConfig.routes || [];
+        let target = cs.nextStepId;
+        for (const route of routes) {
+          const routeValues = (route.values || []) as string[];
+          if (
+            routeValues.includes("*") ||
+            matchResponse(message, routeValues, cConfig.operator)
+          ) {
+            if (route.goToType === "alt") {
+              target = cs.altNextStepId || null;
+            } else if (route.goToType === "prev") {
+              // Voltar ao passo anterior (re-perguntar)
+              const prevStep = steps.find((s: FlowStepData) => s.order === cs!.order - 1);
+              target = prevStep?.id || null;
+              if (prevStep?.type === "WAIT_RESPONSE" && evolutionClient) {
+                const pConfig = (prevStep.config || {}) as Record<string, any>;
+                const reAsk = pConfig.retryMessage || pConfig.fallbackMessage;
+                if (reAsk) await evolutionClient.sendText({ number: session.customerPhone, text: reAsk });
+              }
+            }
+            // "next" (padrão) mantém cs.nextStepId
+            break;
+          }
+        }
+        if (!target) break;
+        cs = steps.find((s: FlowStepData) => s.id === target) || undefined;
+        continue;
       }
 
       // GENERATE_PIX e outros: executa normalmente (com allVars mesclado)
