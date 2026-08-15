@@ -218,7 +218,7 @@ async function generateTrustPix(
       pixCopyPaste: pix.pixCopyPaste,
       pixQrCode: pix.pixQrCodeBase64,
       pixExpiresAt: new Date(pix.pixExpiration),
-      metadata: { trustMode: true, originalSale: true },
+      metadata: { trustMode: true, originalSale: true, gateway: token.startsWith("inf_") || token.startsWith("ip_") ? "infinitepay" : "mercadopago" },
     },
   });
 
@@ -1013,7 +1013,7 @@ export class FlowEngine {
               pixCopyPaste: pix.pixCopyPaste,
               pixQrCode: pix.pixQrCodeBase64,
               pixExpiresAt: new Date(pix.pixExpiration),
-              metadata: { stepId: step.id, nextStepId: step.nextStepId },
+              metadata: { stepId: step.id, nextStepId: step.nextStepId, gateway: token.startsWith("inf_") || token.startsWith("ip_") ? "infinitepay" : "mercadopago" },
             },
           });
 
@@ -1293,11 +1293,16 @@ export class FlowEngine {
         return { success: false, delivered: false };
       }
 
-      // Consultar status no gateway (Mercado Pago ou InfinitePay, por prefixo do token)
-      const gateway = tenant.mercadopagoToken.startsWith("inf_") ||
-        tenant.mercadopagoToken.startsWith("ip_")
-        ? "infinitepay"
-        : "mercadopago";
+      // Gateway usado na criação da venda (gravado no metadata) —
+      // trocar o token nas configurações não afeta vendas já pendentes
+      const saleMetaGw = (sale.metadata as any)?.gateway;
+      const gateway =
+        saleMetaGw === "infinitepay" || saleMetaGw === "mercadopago"
+          ? saleMetaGw
+          : tenant.mercadopagoToken.startsWith("inf_") ||
+              tenant.mercadopagoToken.startsWith("ip_")
+            ? "infinitepay"
+            : "mercadopago";
 
       let paid = false;
       let gatewayStatus = "";
