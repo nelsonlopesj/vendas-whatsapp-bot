@@ -27,6 +27,14 @@ export interface PaymentCheckResult {
 
 const BASE_URL = "https://api.checkout.infinitepay.io";
 
+/** Normaliza telefone para o formato +55DDDNNNNNNNN esperado pela InfinitePay */
+function normalizePhone(phone?: string): string | undefined {
+  if (!phone) return undefined;
+  const digits = phone.replace(/\D/g, "");
+  if (digits.startsWith("55") && digits.length >= 12) return `+${digits}`;
+  return `+55${digits}`;
+}
+
 export class InfinitePayClient {
   private handle: string;
 
@@ -61,10 +69,12 @@ export class InfinitePayClient {
     if (params.webhookUrl) body.webhook_url = params.webhookUrl;
     if (params.redirectUrl) body.redirect_url = params.redirectUrl;
     if (params.customer) {
+      const phoneNumber = normalizePhone(params.customer.phoneNumber);
+      // Pré-preenche o que temos para o cliente não digitar (nome opcional)
       body.customer = {
-        name: params.customer.name,
-        email: params.customer.email,
-        phone_number: params.customer.phoneNumber,
+        ...(params.customer.name ? { name: params.customer.name } : {}),
+        ...(params.customer.email ? { email: params.customer.email } : {}),
+        ...(phoneNumber ? { phone_number: phoneNumber } : {}),
       };
     }
 

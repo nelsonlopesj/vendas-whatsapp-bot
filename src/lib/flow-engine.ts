@@ -196,7 +196,16 @@ async function generateTrustPix(
     const webhookUrl = process.env.NEXTAUTH_URL
       ? `${process.env.NEXTAUTH_URL.replace(/\/$/, "")}/api/webhooks/infinitepay`
       : undefined;
-    const r = await ip.createCheckoutLink({ amount, description, orderNsu, webhookUrl });
+    const r = await ip.createCheckoutLink({
+      amount,
+      description,
+      orderNsu,
+      webhookUrl,
+      customer: {
+        name: session.customerName || undefined,
+        phoneNumber: phone,
+      },
+    });
     console.log(`[TRUST] InfinitePay link created order=${orderNsu}`);
     pix = { id: orderNsu, pixCopyPaste: r.url, pixQrCodeBase64: "", pixExpiration: "" };
   } else {
@@ -920,7 +929,16 @@ export class FlowEngine {
                 const webhookUrl = process.env.NEXTAUTH_URL
                   ? `${process.env.NEXTAUTH_URL.replace(/\/$/, "")}/api/webhooks/infinitepay`
                   : undefined;
-                const r = await ip.createCheckoutLink({ amount: price, description, orderNsu, webhookUrl });
+                const r = await ip.createCheckoutLink({
+                  amount: price,
+                  description,
+                  orderNsu,
+                  webhookUrl,
+                  customer: {
+                    name: session.customerName || undefined,
+                    phoneNumber: phone,
+                  },
+                });
                 console.log(`[PIX-LINK] InfinitePay link created order=${orderNsu}`);
                 pix = { id: orderNsu, pixCopyPaste: r.url, pixQrCodeBase64: "", pixExpiration: "" };
               } else {
