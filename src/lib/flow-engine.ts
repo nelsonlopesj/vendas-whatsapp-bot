@@ -175,7 +175,7 @@ async function generateTrustPix(
   // Buscar tenant para token
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
   const token = tenant?.mercadopagoToken || "";
-  if (!token) throw new Error("Token Mercado Pago não configurado");
+  if (!token) throw new Error("Token de pagamento não configurado");
 
   // Buscar produto
   let description = config.description || "Produto digital";
@@ -774,17 +774,17 @@ export class FlowEngine {
           };
         }
 
-        // Buscar tenant config para Mercado Pago
+        // Buscar tenant config do gateway de pagamento
         const tenant = await prisma.tenant.findUnique({
           where: { id: tenantId },
         });
         const token = tenant?.mercadopagoToken || "";
         if (!token) {
-          console.error(`[PIX-ERR] No Mercado Pago token for tenant ${tenantId}`);
+          console.error(`[PIX-ERR] No payment token for tenant ${tenantId}`);
           try {
             await evolutionClient.sendText({
               number: phone,
-              text: "❌ *Erro ao gerar PIX*\n\nO token do Mercado Pago não foi configurado. Por favor, entre em contato com o suporte.",
+              text: "❌ *Erro ao gerar PIX*\n\nO token de pagamento não foi configurado. Por favor, entre em contato com o suporte.",
             });
           } catch {}
           return {
@@ -792,7 +792,7 @@ export class FlowEngine {
             status: "failed",
             variables,
             loopCounters,
-            response: "Erro: token Mercado Pago não configurado",
+            response: "Erro: token de pagamento não configurado",
           };
         }
 
@@ -817,7 +817,7 @@ export class FlowEngine {
         }
 
         try {
-          // Retry: 3 tentativas para criar PIX (resiliência a falhas momentâneas do MP)
+          // Retry: 3 tentativas para criar PIX (resiliência a falhas momentâneas do gateway)
           let pix: { id: string; pixCopyPaste: string; pixQrCodeBase64: string; pixExpiration: string };
           let pixError: any = null;
           for (let attempt = 0; attempt < 3; attempt++) {
@@ -1215,11 +1215,31 @@ export class FlowEngine {
         return { success: false, delivered: false };
       }
 
-      // Consultar status no Mercado Pago
-      const mp = new MercadoPagoClient(tenant.mercadopagoToken);
-      const payment = await mp.getPaymentStatus(paymentId);
+      // Consultar status no gateway (Mercado Pago ou InfinitePay, por prefixo do token)
+      const gateway = tenant.mercadopagoToken.startsWith("inf_") ||
+        tenant.mercadopagoToken.startsWith("ip_")
+        ? "infinitepay"
+        : "mercadopago";
 
-      if (payment.status === "approved") {
+      let paid = false;
+      let gatewayStatus = "";
+      let gatewayDetail = "";
+
+      if (gateway === "infinitepay") {
+        const { InfinitePayClient, isInfinitePayPaid } = await import("./infinitepay");
+        const ip = new InfinitePayClient(tenant.mercadopagoToken);
+        const tx = await ip.getPaymentStatus(paymentId);
+        gatewayStatus = tx.status;
+        paid = isInfinitePayPaid(tx.status);
+      } else {
+        const mp = new MercadoPagoClient(tenant.mercadopagoToken);
+        const payment = await mp.getPaymentStatus(paymentId);
+        gatewayStatus = payment.status;
+        gatewayDetail = payment.statusDetail || "";
+        paid = payment.status === "approved";
+      }
+
+      if (paid) {
         // Atualizar venda
         await prisma.sale.update({
           where: { id: sale.id },
@@ -1228,8 +1248,9 @@ export class FlowEngine {
             paidAt: new Date(),
             metadata: {
               ...(sale.metadata as any),
-              mpStatus: payment.status,
-              mpDetail: payment.statusDetail,
+              gateway,
+              mpStatus: gatewayStatus,
+              mpDetail: gatewayDetail,
             },
           },
         });
@@ -1306,7 +1327,9 @@ export class FlowEngine {
 
         return { success: true, delivered: false };
       } else if (
-        ["cancelled", "refunded", "charged_back"].includes(payment.status)
+        gateway === "infinitepay"
+          ? ["cancelled", "canceled", "refused", "chargeback", "reversed", "failed"].includes(gatewayStatus)
+          : ["cancelled", "refunded", "charged_back"].includes(gatewayStatus)
       ) {
         await prisma.sale.update({
           where: { id: sale.id },
@@ -1325,7 +1348,11 @@ export class FlowEngine {
       }
 
       // PIX expirado
-      if (["expired", "rejected"].includes(payment.status)) {
+      if (
+        gateway === "infinitepay"
+          ? ["expired"].includes(gatewayStatus)
+          : ["expired", "rejected"].includes(gatewayStatus)
+      ) {
         await prisma.sale.update({ where: { id: sale.id }, data: { status: "CANCELLED" } });
         if (session) {
           const pixStep = session.flow?.steps?.find((s: any) => s.type === "GENERATE_PIX");

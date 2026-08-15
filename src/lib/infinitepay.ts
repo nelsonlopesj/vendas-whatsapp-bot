@@ -2,7 +2,11 @@
  * InfinitePay Client — PIX
  *
  * InfinitePay é um gateway de pagamento brasileiro focado em PIX.
- * API: https://docs.infinitepay.io
+ * API: https://docs.infinitepay.io (documentação do desenvolvedor)
+ *
+ * Respostas são tratadas de forma defensiva: a API pode responder no
+ * formato JSON:API (`{ data: { id, attributes: {...} } }`) ou flat
+ * (`{ id, status, pix: {...} }`).
  */
 
 interface CreatePixParams {
@@ -18,6 +22,39 @@ interface PixResult {
   pixCopyPaste: string;
   pixQrCodeBase64: string;
   pixExpiration: string;
+}
+
+/** Desembrulha respostas JSON:API ou flat em um objeto único */
+function unwrap(data: any): any {
+  const d = data?.data;
+  if (d && typeof d === "object" && !Array.isArray(d)) {
+    return { ...data, ...d };
+  }
+  return data || {};
+}
+
+/**
+ * Status considerados "pago" na InfinitePay.
+ * A API usa snake_case; mantemos uma lista tolerante e logamos
+ * status desconhecidos para ajuste fino em produção.
+ */
+export function isInfinitePayPaid(status: string): boolean {
+  const s = (status || "").toLowerCase().trim();
+  return ["paid", "approved", "confirmed", "settled", "completed"].includes(s);
+}
+
+/** Status que encerram a cobrança sem pagamento */
+export function isInfinitePayFinished(status: string): boolean {
+  const s = (status || "").toLowerCase().trim();
+  return [
+    "expired",
+    "refused",
+    "cancelled",
+    "canceled",
+    "failed",
+    "chargeback",
+    "reversed",
+  ].includes(s);
 }
 
 export class InfinitePayClient {
@@ -62,14 +99,16 @@ export class InfinitePayClient {
     }
 
     const data = await res.json();
-    const pix = data?.attributes?.pix || {};
+    const d = unwrap(data);
+    const pix = d.attributes?.pix || d.pix || {};
 
     return {
-      id: data.id || data.data?.id || "",
-      status: data.status || "pending",
-      pixCopyPaste: pix.qr_code || pix.copy_paste || "",
-      pixQrCodeBase64: pix.qr_code_base64 || "",
-      pixExpiration: data.expires_at || "",
+      id: d.id || "",
+      status: d.status || "pending",
+      pixCopyPaste:
+        pix.qr_code || pix.copy_paste || pix.emv || pix.qrCode || "",
+      pixQrCodeBase64: pix.qr_code_base64 || pix.qrCodeBase64 || "",
+      pixExpiration: d.expires_at || d.pixExpiration || "",
     };
   }
 
@@ -91,10 +130,15 @@ export class InfinitePayClient {
     }
 
     const data = await res.json();
+    const d = unwrap(data);
+
+    const status = d.status || d.attributes?.status || "pending";
+    console.log(`[INFINITEPAY] tx ${transactionId} status="${status}"`);
+
     return {
-      id: data.id || data.data?.id || transactionId,
-      status: data.status || "pending",
-      amount: (data.amount || 0) / 100,
+      id: d.id || transactionId,
+      status,
+      amount: (d.amount || d.attributes?.amount || 0) / 100,
     };
   }
 }

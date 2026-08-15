@@ -175,7 +175,7 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
         </div>
       </div>
 
-      {/* ===== PASSO 2: Mercado Pago ===== */}
+      {/* ===== PASSO 2: Gateway de pagamento ===== */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="p-6">
           <div className="flex items-center gap-2 mb-1">
@@ -185,47 +185,125 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
             <h2 className="font-semibold text-lg">Configurar PIX</h2>
           </div>
           <p className="text-sm text-muted-foreground ml-8 mb-5">
-            Conecte sua conta Mercado Pago para receber via PIX.
+            Escolha o gateway para receber via PIX. O ezflow detecta o
+            provedor automaticamente pelo prefixo do token.
           </p>
 
           <div className="ml-8 space-y-4">
-            <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20">
-              <p className="text-sm font-semibold mb-2">
-                📋 Como obter seu token:
-              </p>
-              <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
-                <li>
-                  Acesse{" "}
-                  <a
-                    href="https://www.mercadopago.com.br/settings/account/credentials"
-                    target="_blank"
-                    className="text-primary hover:underline inline-flex items-center gap-0.5"
-                  >
-                    Mercado Pago → Credenciais
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </li>
-                <li>Selecione &ldquo;Produção&rdquo;</li>
-                <li>
-                  Copie o <strong>Access Token</strong> (APP_USR-...)
-                </li>
-                <li>Cole abaixo e salve</li>
-              </ol>
+            {/* Seletor de provedor */}
+            <div className="inline-flex rounded-lg border border-border overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setProvider("mercadopago")}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  provider === "mercadopago"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                Mercado Pago
+              </button>
+              <button
+                type="button"
+                onClick={() => setProvider("infinitepay")}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  provider === "infinitepay"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                InfinitePay
+              </button>
             </div>
+
+            {provider === "mercadopago" ? (
+              <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                <p className="text-sm font-semibold mb-2">
+                  📋 Como obter seu token:
+                </p>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                  <li>
+                    Acesse{" "}
+                    <a
+                      href="https://www.mercadopago.com.br/settings/account/credentials"
+                      target="_blank"
+                      className="text-primary hover:underline inline-flex items-center gap-0.5"
+                    >
+                      Mercado Pago → Credenciais
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </li>
+                  <li>Selecione &ldquo;Produção&rdquo;</li>
+                  <li>
+                    Copie o <strong>Access Token</strong> (APP_USR-...)
+                  </li>
+                  <li>Cole abaixo e salve</li>
+                </ol>
+              </div>
+            ) : (
+              <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                <p className="text-sm font-semibold mb-2">
+                  📋 Como obter sua API Key InfinitePay:
+                </p>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                  <li>Acesse o painel da InfinitePay (app.infinitepay.io)</li>
+                  <li>
+                    Vá em <strong>API / Integrações</strong>
+                  </li>
+                  <li>
+                    Copie a <strong>API Key</strong> (começa com inf_)
+                  </li>
+                  <li>
+                    No painel, configure o webhook para{" "}
+                    <code className="bg-muted px-1 rounded">
+                      https://seu-dominio.com/api/webhooks/infinitepay
+                    </code>{" "}
+                    (opcional — o ezflow também confirma via consulta periódica)
+                  </li>
+                  <li>Cole abaixo e salve</li>
+                </ol>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-medium mb-1">
-                Access Token
+                {provider === "mercadopago"
+                  ? "Access Token (Mercado Pago)"
+                  : "API Key (InfinitePay)"}
               </label>
               <div className="flex gap-2">
                 <input
                   type="password"
                   value={mercadopagoToken}
-                  onChange={(e) => setMercadopagoToken(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setMercadopagoToken(v);
+                    if (v.startsWith("inf_") || v.startsWith("ip_")) {
+                      setProvider("infinitepay");
+                    } else if (
+                      v.startsWith("APP_USR-") ||
+                      v.startsWith("TEST-")
+                    ) {
+                      setProvider("mercadopago");
+                    }
+                  }}
                   className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono"
-                  placeholder="APP_USR-..."
+                  placeholder={
+                    provider === "mercadopago" ? "APP_USR-..." : "inf_..."
+                  }
                 />
               </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                {mercadopagoToken ? (
+                  provider === "infinitepay" ? (
+                    "✅ Gateway detectado: InfinitePay"
+                  ) : (
+                    "✅ Gateway detectado: Mercado Pago"
+                  )
+                ) : (
+                  "O provedor é detectado pelo prefixo do token"
+                )}
+              </p>
             </div>
 
             {mercadopagoToken && (
