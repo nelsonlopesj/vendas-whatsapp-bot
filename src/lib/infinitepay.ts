@@ -1,150 +1,136 @@
 /**
- * InfinitePay Client — PIX
+ * InfinitePay Client — Checkout Integrado (links de pagamento)
  *
- * InfinitePay é um gateway de pagamento brasileiro focado em PIX.
- * API: https://docs.infinitepay.io (documentação do desenvolvedor)
- *
- * Respostas são tratadas de forma defensiva: a API pode responder no
- * formato JSON:API (`{ data: { id, attributes: {...} } }`) ou flat
- * (`{ id, status, pix: {...} }`).
+ * Integração real da InfinitePay (validada em 2026-08-15):
+ * - NÃO usa API key/token — identifica a conta pela InfiniteTag (handle, sem o $)
+ * - POST https://api.checkout.infinitepay.io/links → cria link de pagamento
+ *   payload: { handle, items:[{quantity, price(centavos), description}],
+ *              order_nsu?, redirect_url?, webhook_url?, customer? }
+ *   resposta: { url: "https://checkout.infinitepay.io/<handle>?lenc=..." }
+ * - POST .../payment_check → consulta status (exige transaction_nsu/slug,
+ *   que só chegam via webhook/redirect)
+ * - Webhook (opcional, enviado no POST /links): { invoice_slug, amount,
+ *   paid_amount, transaction_nsu, order_nsu, receipt_url, items } — responde 200
+ *   rápido (400 = retry)
  */
 
-interface CreatePixParams {
-  amount: number;
-  description: string;
-  externalReference?: string;
-  expirationMinutes?: number;
+export interface CheckoutLinkResult {
+  url: string;
 }
 
-interface PixResult {
-  id: string;
-  status: string;
-  pixCopyPaste: string;
-  pixQrCodeBase64: string;
-  pixExpiration: string;
+export interface PaymentCheckResult {
+  paid: boolean;
+  amount: number; // centavos
+  paidAmount: number; // centavos
+  captureMethod: string; // "pix" | "credit_card"
 }
 
-/** Desembrulha respostas JSON:API ou flat em um objeto único */
-function unwrap(data: any): any {
-  const d = data?.data;
-  if (d && typeof d === "object" && !Array.isArray(d)) {
-    return { ...data, ...d };
-  }
-  return data || {};
-}
-
-/**
- * Status considerados "pago" na InfinitePay.
- * A API usa snake_case; mantemos uma lista tolerante e logamos
- * status desconhecidos para ajuste fino em produção.
- */
-export function isInfinitePayPaid(status: string): boolean {
-  const s = (status || "").toLowerCase().trim();
-  return ["paid", "approved", "confirmed", "settled", "completed"].includes(s);
-}
-
-/** Status que encerram a cobrança sem pagamento */
-export function isInfinitePayFinished(status: string): boolean {
-  const s = (status || "").toLowerCase().trim();
-  return [
-    "expired",
-    "refused",
-    "cancelled",
-    "canceled",
-    "failed",
-    "chargeback",
-    "reversed",
-  ].includes(s);
-}
+const BASE_URL = "https://api.checkout.infinitepay.io";
 
 export class InfinitePayClient {
-  private apiKey: string;
+  private handle: string;
 
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
-  }
-
-  private get headers(): Record<string, string> {
-    return {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${this.apiKey}`,
-      Accept: "application/json",
-    };
+  constructor(handle: string) {
+    // Handle = InfiniteTag sem o símbolo $ do início
+    this.handle = handle.replace(/^\$/, "").trim();
   }
 
   /**
-   * Cria uma cobrança PIX
+   * Cria um link de pagamento (Checkout Integrado)
+   * @param orderNsu id do pedido no nosso sistema (usado para casar o webhook)
    */
-  async createPixPayment(params: CreatePixParams): Promise<PixResult> {
-    const expirationMinutes = params.expirationMinutes || 30;
-
-    const body = {
-      amount: Math.round(params.amount * 100), // centavos
-      currency: "BRL",
-      payment_method: "pix",
-      description: params.description,
-      external_reference: params.externalReference || "",
-      pix_expiration: expirationMinutes * 60, // segundos
+  async createCheckoutLink(params: {
+    amount: number; // reais
+    description: string;
+    orderNsu: string;
+    webhookUrl?: string;
+    redirectUrl?: string;
+    customer?: { name?: string; email?: string; phoneNumber?: string };
+  }): Promise<CheckoutLinkResult> {
+    const body: Record<string, any> = {
+      handle: this.handle,
+      items: [
+        {
+          quantity: 1,
+          price: Math.round(params.amount * 100), // centavos
+          description: params.description,
+        },
+      ],
+      order_nsu: params.orderNsu,
     };
+    if (params.webhookUrl) body.webhook_url = params.webhookUrl;
+    if (params.redirectUrl) body.redirect_url = params.redirectUrl;
+    if (params.customer) {
+      body.customer = {
+        name: params.customer.name,
+        email: params.customer.email,
+        phone_number: params.customer.phoneNumber,
+      };
+    }
 
-    const res = await fetch("https://api.infinitepay.io/v2/transactions", {
+    const res = await fetch(`${BASE_URL}/links`, {
       method: "POST",
-      headers: this.headers,
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
 
     if (!res.ok) {
       const error = await res.text();
-      throw new Error(`InfinitePay error: ${res.status} ${error}`);
+      throw new Error(`InfinitePay links error: ${res.status} ${error}`);
     }
 
     const data = await res.json();
-    const d = unwrap(data);
-    const pix = d.attributes?.pix || d.pix || {};
-
-    return {
-      id: d.id || "",
-      status: d.status || "pending",
-      pixCopyPaste:
-        pix.qr_code || pix.copy_paste || pix.emv || pix.qrCode || "",
-      pixQrCodeBase64: pix.qr_code_base64 || pix.qrCodeBase64 || "",
-      pixExpiration: d.expires_at || d.pixExpiration || "",
-    };
+    if (!data?.url) {
+      throw new Error(
+        `InfinitePay links error: ${JSON.stringify(data)}`
+      );
+    }
+    return { url: data.url };
   }
 
   /**
-   * Consulta status de pagamento
+   * Consulta o status do pagamento (exige transaction_nsu/slug recebidos no webhook)
    */
-  async getPaymentStatus(transactionId: string): Promise<{
-    id: string;
-    status: string;
-    amount: number;
-  }> {
-    const res = await fetch(
-      `https://api.infinitepay.io/v2/transactions/${transactionId}`,
-      { headers: this.headers }
-    );
+  async checkPayment(params: {
+    orderNsu: string;
+    transactionNsu?: string;
+    slug?: string;
+  }): Promise<PaymentCheckResult> {
+    const body: Record<string, any> = {
+      handle: this.handle,
+      order_nsu: params.orderNsu,
+    };
+    if (params.transactionNsu) body.transaction_nsu = params.transactionNsu;
+    if (params.slug) body.slug = params.slug;
+
+    const res = await fetch(`${BASE_URL}/payment_check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
 
     if (!res.ok) {
-      throw new Error(`InfinitePay status error: ${res.status}`);
+      throw new Error(`InfinitePay payment_check error: ${res.status}`);
     }
 
     const data = await res.json();
-    const d = unwrap(data);
-
-    const status = d.status || d.attributes?.status || "pending";
-    console.log(`[INFINITEPAY] tx ${transactionId} status="${status}"`);
+    console.log(
+      `[INFINITEPAY] payment_check order=${params.orderNsu} resp=${JSON.stringify(data)}`
+    );
 
     return {
-      id: d.id || transactionId,
-      status,
-      amount: (d.amount || d.attributes?.amount || 0) / 100,
+      paid: data?.paid === true,
+      amount: data?.amount || 0,
+      paidAmount: data?.paid_amount || data?.paidAmount || 0,
+      captureMethod: data?.capture_method || data?.captureMethod || "",
     };
   }
 }
 
 /**
- * Detecta qual provider de PIX usar baseado no token
+ * Detecta qual provider de PIX usar baseado no token configurado:
+ * - Mercado Pago: APP_USR-* / TEST-*
+ * - InfinitePay: qualquer outro valor não-vazio (a InfiniteTag/handle)
  */
 export function detectPixProvider(
   token: string
@@ -152,7 +138,5 @@ export function detectPixProvider(
   if (!token) return "unknown";
   if (token.startsWith("APP_USR-") || token.startsWith("TEST-"))
     return "mercadopago";
-  if (token.startsWith("inf_") || token.startsWith("ip_"))
-    return "infinitepay";
-  return "unknown";
+  return "infinitepay";
 }

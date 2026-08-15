@@ -5,9 +5,11 @@
  * (mensagem, espera, PIX, entrega, condição, loop) e gerencia timeouts/retry.
  */
 
+import { randomUUID } from "crypto";
 import prisma from "./prisma";
 import { EvolutionClient } from "./evolution";
 import { MercadoPagoClient } from "./mercadopago";
+import { detectPixProvider } from "./infinitepay";
 
 // ===== Tipos =====
 
@@ -184,13 +186,19 @@ async function generateTrustPix(
     if (product) description = product.name;
   }
 
-  // Gerar PIX com valor customizado
+  // Gerar cobrança com valor customizado (PIX Mercado Pago ou link InfinitePay)
+  const isInfinitePay = detectPixProvider(token) === "infinitepay";
   let pix: { id: string; pixCopyPaste: string; pixQrCodeBase64: string; pixExpiration: string };
-  if (token.startsWith("inf_")) {
+  if (isInfinitePay) {
     const { InfinitePayClient } = await import("./infinitepay");
     const ip = new InfinitePayClient(token);
-    const r = await ip.createPixPayment({ amount, description, expirationMinutes: config.expirationMinutes || 30 });
-    pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
+    const orderNsu = `ezflow-trust-${randomUUID()}`;
+    const webhookUrl = process.env.NEXTAUTH_URL
+      ? `${process.env.NEXTAUTH_URL.replace(/\/$/, "")}/api/webhooks/infinitepay`
+      : undefined;
+    const r = await ip.createCheckoutLink({ amount, description, orderNsu, webhookUrl });
+    console.log(`[TRUST] InfinitePay link created order=${orderNsu}`);
+    pix = { id: orderNsu, pixCopyPaste: r.url, pixQrCodeBase64: "", pixExpiration: "" };
   } else {
     const { MercadoPagoClient } = await import("./mercadopago");
     const mp = new MercadoPagoClient(token);
@@ -198,8 +206,10 @@ async function generateTrustPix(
     pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
   }
 
-  // Mensagem de confiança + PIX
-  const trustMsg = config.trustMessage || `Aqui está! Espero que goste. Se puder contribuir com qualquer valor pelo PIX abaixo, sua boa-fé ajuda a manter esse projeto! 🙏`;
+  // Mensagem de confiança + cobrança
+  const trustMsg = config.trustMessage || (isInfinitePay
+    ? `Aqui está! Espero que goste. Se puder contribuir com qualquer valor pelo link abaixo, sua boa-fé ajuda a manter esse projeto! 🙏`
+    : `Aqui está! Espero que goste. Se puder contribuir com qualquer valor pelo PIX abaixo, sua boa-fé ajuda a manter esse projeto! 🙏`);
   await evolutionClient.sendText({ number: phone, text: trustMsg });
   await evolutionClient.sendText({ number: phone, text: pix.pixCopyPaste });
 
@@ -217,8 +227,8 @@ async function generateTrustPix(
       externalId: pix.id,
       pixCopyPaste: pix.pixCopyPaste,
       pixQrCode: pix.pixQrCodeBase64,
-      pixExpiresAt: new Date(pix.pixExpiration),
-      metadata: { trustMode: true, originalSale: true, gateway: token.startsWith("inf_") || token.startsWith("ip_") ? "infinitepay" : "mercadopago" },
+      pixExpiresAt: isInfinitePay ? null : new Date(pix.pixExpiration),
+      metadata: { trustMode: true, originalSale: true, gateway: isInfinitePay ? "infinitepay" : "mercadopago" },
     },
   });
 
@@ -895,16 +905,24 @@ export class FlowEngine {
         }
 
         try {
-          // Retry: 3 tentativas para criar PIX (resiliência a falhas momentâneas do gateway)
+          const isInfinitePay = detectPixProvider(token) === "infinitepay";
+          // orderNsu fixo para retries (InfinitePay casa o webhook por ele)
+          const orderNsu = isInfinitePay ? `ezflow-${randomUUID()}` : "";
+
+          // Retry: 3 tentativas para criar cobrança (resiliência a falhas momentâneas do gateway)
           let pix: { id: string; pixCopyPaste: string; pixQrCodeBase64: string; pixExpiration: string };
           let pixError: any = null;
           for (let attempt = 0; attempt < 3; attempt++) {
             try {
-              if (token.startsWith("inf_")) {
+              if (isInfinitePay) {
                 const { InfinitePayClient } = await import("./infinitepay");
                 const ip = new InfinitePayClient(token);
-                const r = await ip.createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
-                pix = { id: r.id, pixCopyPaste: r.pixCopyPaste, pixQrCodeBase64: r.pixQrCodeBase64, pixExpiration: r.pixExpiration };
+                const webhookUrl = process.env.NEXTAUTH_URL
+                  ? `${process.env.NEXTAUTH_URL.replace(/\/$/, "")}/api/webhooks/infinitepay`
+                  : undefined;
+                const r = await ip.createCheckoutLink({ amount: price, description, orderNsu, webhookUrl });
+                console.log(`[PIX-LINK] InfinitePay link created order=${orderNsu}`);
+                pix = { id: orderNsu, pixCopyPaste: r.url, pixQrCodeBase64: "", pixExpiration: "" };
               } else {
                 const mp = new MercadoPagoClient(token);
                 const r = await mp.createPixPayment({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
@@ -922,27 +940,35 @@ export class FlowEngine {
           }
           if (pixError) throw pixError;
 
-          // Enviar PIX para o cliente
-          // Enviar resumo primeiro
-          await evolutionClient.sendText({
-            number: phone,
-            text: `💳 *Pagamento via PIX*\n\n📦 *Produto:* ${description}\n💰 *Valor:* R$ ${price.toFixed(2)}\n⏰ *Vence em:* ${config.expirationMinutes || 30} minutos`,
-          });
-          // Enviar código PIX isolado para fácil cópia
-          await evolutionClient.sendText({
-            number: phone,
-            text: pix.pixCopyPaste,
-          });
-          // Mensagem de instrução opcional (ex: "Copie e cole no app do banco")
-          if (config.instructionMessage) {
+          if (isInfinitePay) {
+            // Checkout Integrado: envia o link de pagamento (PIX ou cartão na página deles)
             await evolutionClient.sendText({
               number: phone,
-              text: config.instructionMessage,
+              text: `💳 *Pagamento*\n\n📦 *Produto:* ${description}\n💰 *Valor:* R$ ${price.toFixed(2)}\n\n👉 Pague pelo link abaixo (PIX ou cartão):\n${pix.pixCopyPaste}`,
             });
+          } else {
+            // Enviar PIX para o cliente
+            // Enviar resumo primeiro
+            await evolutionClient.sendText({
+              number: phone,
+              text: `💳 *Pagamento via PIX*\n\n📦 *Produto:* ${description}\n💰 *Valor:* R$ ${price.toFixed(2)}\n⏰ *Vence em:* ${config.expirationMinutes || 30} minutos`,
+            });
+            // Enviar código PIX isolado para fácil cópia
+            await evolutionClient.sendText({
+              number: phone,
+              text: pix.pixCopyPaste,
+            });
+            // Mensagem de instrução opcional (ex: "Copie e cole no app do banco")
+            if (config.instructionMessage) {
+              await evolutionClient.sendText({
+                number: phone,
+                text: config.instructionMessage,
+              });
+            }
           }
 
           // Link de pagamento via Checkout Pro (opcional, apenas Mercado Pago)
-          if (config.paymentLink && !token.startsWith("inf_")) {
+          if (config.paymentLink && !isInfinitePay) {
             try {
               const mpCheckout = new MercadoPagoClient(token);
               const checkoutUrl = await mpCheckout.createCheckoutLink({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
@@ -957,20 +983,22 @@ export class FlowEngine {
             }
           }
 
-          // Polling robusto via BullMQ: verifica a cada 30s até o PIX expirar
-          try {
-            const { flowTimeoutQueue } = await import("./queue");
-            const expMinutes = config.expirationMinutes || 30;
-            const iterations = Math.ceil((expMinutes * 60) / 30); // a cada 30 segundos
-            for (let i = 1; i <= iterations; i++) {
-              await flowTimeoutQueue.add(
-                "pix-poll",
-                { paymentId: pix.id, tenantId },
-                { delay: i * 30000, jobId: `pix-poll-${pix.id}-${i}` }
-              );
+          // Polling via BullMQ: apenas Mercado Pago (InfinitePay confirma via webhook)
+          if (!isInfinitePay) {
+            try {
+              const { flowTimeoutQueue } = await import("./queue");
+              const expMinutes = config.expirationMinutes || 30;
+              const iterations = Math.ceil((expMinutes * 60) / 30); // a cada 30 segundos
+              for (let i = 1; i <= iterations; i++) {
+                await flowTimeoutQueue.add(
+                  "pix-poll",
+                  { paymentId: pix.id, tenantId },
+                  { delay: i * 30000, jobId: `pix-poll-${pix.id}-${i}` }
+                );
+              }
+            } catch (err: any) {
+              console.error(`[PIX-POLL] failed to schedule:`, err.message);
             }
-          } catch (err: any) {
-            console.error(`[PIX-POLL] failed to schedule:`, err.message);
           }
 
           // Agendar lembretes de remarketing (opcionais)
@@ -1012,8 +1040,8 @@ export class FlowEngine {
               externalId: pix.id,
               pixCopyPaste: pix.pixCopyPaste,
               pixQrCode: pix.pixQrCodeBase64,
-              pixExpiresAt: new Date(pix.pixExpiration),
-              metadata: { stepId: step.id, nextStepId: step.nextStepId, gateway: token.startsWith("inf_") || token.startsWith("ip_") ? "infinitepay" : "mercadopago" },
+              pixExpiresAt: isInfinitePay ? null : new Date(pix.pixExpiration),
+              metadata: { stepId: step.id, nextStepId: step.nextStepId, gateway: isInfinitePay ? "infinitepay" : "mercadopago" },
             },
           });
 
@@ -1264,7 +1292,8 @@ export class FlowEngine {
    */
   static async handlePixPayment(
     paymentId: string,
-    tenantId: string
+    tenantId: string,
+    verify?: { transactionNsu?: string; slug?: string }
   ): Promise<{ success: boolean; delivered: boolean }> {
     try {
       // Buscar venda pelo externalId
@@ -1299,21 +1328,27 @@ export class FlowEngine {
       const gateway =
         saleMetaGw === "infinitepay" || saleMetaGw === "mercadopago"
           ? saleMetaGw
-          : tenant.mercadopagoToken.startsWith("inf_") ||
-              tenant.mercadopagoToken.startsWith("ip_")
-            ? "infinitepay"
-            : "mercadopago";
+          : detectPixProvider(tenant.mercadopagoToken);
 
       let paid = false;
       let gatewayStatus = "";
       let gatewayDetail = "";
 
       if (gateway === "infinitepay") {
-        const { InfinitePayClient, isInfinitePayPaid } = await import("./infinitepay");
+        const { InfinitePayClient } = await import("./infinitepay");
         const ip = new InfinitePayClient(tenant.mercadopagoToken);
-        const tx = await ip.getPaymentStatus(paymentId);
-        gatewayStatus = tx.status;
-        paid = isInfinitePayPaid(tx.status);
+        const check = await ip.checkPayment({
+          orderNsu: paymentId,
+          transactionNsu: verify?.transactionNsu,
+          slug: verify?.slug,
+        });
+        if (!check.paid) {
+          // Ainda pendente (ou sem dados do webhook para conferir)
+          return { success: true, delivered: false };
+        }
+        gatewayStatus = "paid";
+        gatewayDetail = check.captureMethod || "";
+        paid = true;
       } else {
         const mp = new MercadoPagoClient(tenant.mercadopagoToken);
         const payment = await mp.getPaymentStatus(paymentId);

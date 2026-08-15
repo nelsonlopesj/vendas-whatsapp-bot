@@ -4,59 +4,67 @@ import { FlowEngine } from "@/lib/flow-engine";
 
 /**
  * POST /api/webhooks/infinitepay
- * Recebe webhooks de confirmação de pagamento da InfinitePay.
+ * Recebe webhooks do Checkout Integrado da InfinitePay.
  *
- * A InfinitePay permite configurar um webhook no painel (API → Webhooks).
- * O formato exato do payload varia; este handler extrai o id da transação
- * de forma defensiva (JSON:API ou flat) e SEMPRE re-valida o status
- * diretamente na API da InfinitePay — o corpo do webhook nunca é confiado
- * como prova de pagamento (handlePixPayment consulta o gateway).
+ * A URL é enviada por link no POST /links (webhook_url). Quando o pagamento
+ * é aprovado, a InfinitePay envia:
+ * {
+ *   "invoice_slug": "...", "amount": 1000, "paid_amount": 1010,
+ *   "installments": 1, "capture_method": "pix" | "credit_card",
+ *   "transaction_nsu": "UUID", "order_nsu": "<nosso orderNsu>",
+ *   "receipt_url": "...", "items": [...]
+ * }
  *
- * Sempre responde 200 para evitar retries desnecessários.
+ * Regra da InfinitePay: responder 200 rápido (menos de 1s) = tudo certo;
+ * 400 = eles retentam.
+ *
+ * Segurança: o corpo NUNCA é confiado como prova — handlePixPayment
+ * re-valida via payment_check com transaction_nsu + slug.
  */
 export async function POST(req: NextRequest) {
+  const start = Date.now();
   try {
     let body: any = {};
     try {
       body = await req.json();
     } catch {
-      // Corpo vazio ou não-JSON: nada a processar
       return NextResponse.json({ success: true, ignored: true });
     }
 
-    // Extração defensiva do id da transação
-    const candidates = [
-      body?.id,
-      body?.transaction_id,
-      body?.transactionId,
-      body?.data?.id,
-      body?.data?.transaction_id,
-      body?.data?.transactionId,
-      body?.data?.attributes?.id,
-      body?.event?.data?.id,
-    ];
-    const paymentId = candidates.find(
-      (v) => typeof v === "string" && v.length > 0
-    );
+    const orderNsu =
+      body?.order_nsu || body?.orderNsu || body?.data?.order_nsu || "";
+    const transactionNsu =
+      body?.transaction_nsu ||
+      body?.transactionNsu ||
+      body?.data?.transaction_nsu ||
+      "";
+    const slug = body?.invoice_slug || body?.slug || body?.data?.invoice_slug || "";
 
-    if (!paymentId) {
-      console.log("[INFINITEPAY-WEBHOOK] no transaction id found in payload");
+    if (!orderNsu) {
+      console.log("[INFINITEPAY-WEBHOOK] no order_nsu in payload");
       return NextResponse.json({ success: true, ignored: true });
     }
 
-    // Buscar venda pelo externalId (igual ao webhook do Mercado Pago)
+    // Venda casada pelo order_nsu (externalId)
     const sale = await prisma.sale.findFirst({
-      where: { externalId: paymentId },
+      where: { externalId: orderNsu },
       include: { tenant: true },
     });
 
     if (!sale) {
-      console.log(`Sale not found for payment ${paymentId}`);
+      console.log(`Sale not found for order_nsu ${orderNsu}`);
       return NextResponse.json({ success: false, error: "Venda não encontrada" });
     }
 
-    // Processar pagamento (re-valida status no gateway)
-    const result = await FlowEngine.handlePixPayment(paymentId, sale.tenantId);
+    // Re-valida com a API da InfinitePay e entrega se confirmado
+    const result = await FlowEngine.handlePixPayment(orderNsu, sale.tenantId, {
+      transactionNsu,
+      slug,
+    });
+
+    console.log(
+      `[INFINITEPAY-WEBHOOK] order=${orderNsu} success=${result.success} delivered=${result.delivered} ms=${Date.now() - start}`
+    );
 
     return NextResponse.json({
       success: result.success,
@@ -64,6 +72,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("InfinitePay webhook error:", error);
+    // 200 para não gerar retries indevidos em erros nossos
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 200 }

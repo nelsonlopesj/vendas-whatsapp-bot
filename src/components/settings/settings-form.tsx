@@ -28,7 +28,11 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
   const [message, setMessage] = useState("");
 
   const [provider, setProvider] = useState<"mercadopago" | "infinitepay">(
-    tenant.mercadopagoToken?.startsWith("inf_") ? "infinitepay" : "mercadopago"
+    tenant.mercadopagoToken &&
+      !tenant.mercadopagoToken.startsWith("APP_USR-") &&
+      !tenant.mercadopagoToken.startsWith("TEST-")
+      ? "infinitepay"
+      : "mercadopago"
   );
 
   // WhatsApp state
@@ -243,24 +247,24 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
             ) : (
               <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20">
                 <p className="text-sm font-semibold mb-2">
-                  📋 Como obter sua API Key InfinitePay:
+                  📋 Como configurar a InfinitePay (Checkout Integrado):
                 </p>
                 <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
-                  <li>Acesse o painel da InfinitePay (app.infinitepay.io)</li>
                   <li>
-                    Vá em <strong>API / Integrações</strong>
+                    No app InfinitePay, ative o{" "}
+                    <strong>Checkout Integrado</strong> (painel → Checkout
+                    Integrado → Configurações → Habilitar)
                   </li>
                   <li>
-                    Copie a <strong>API Key</strong> (começa com inf_)
-                  </li>
-                  <li>
-                    No painel, configure o webhook para{" "}
-                    <code className="bg-muted px-1 rounded">
-                      https://seu-dominio.com/api/webhooks/infinitepay
-                    </code>{" "}
-                    (opcional — o ezflow também confirma via consulta periódica)
+                    Sua <strong>InfiniteTag</strong> é seu nome de usuário no
+                    app (sem o símbolo $ do início) — ex:{" "}
+                    <code className="bg-muted px-1 rounded">seu-nome-de-usuario</code>
                   </li>
                   <li>Cole abaixo e salve</li>
+                  <li>
+                    A notificação de pagamento é automática: o ezflow envia o
+                    webhook junto com cada link — nada para configurar no painel
+                  </li>
                 </ol>
               </div>
             )}
@@ -269,39 +273,38 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
               <label className="block text-xs font-medium mb-1">
                 {provider === "mercadopago"
                   ? "Access Token (Mercado Pago)"
-                  : "API Key (InfinitePay)"}
+                  : "InfiniteTag (InfinitePay)"}
               </label>
               <div className="flex gap-2">
                 <input
-                  type="password"
+                  type={provider === "mercadopago" ? "password" : "text"}
                   value={mercadopagoToken}
                   onChange={(e) => {
                     const v = e.target.value;
                     setMercadopagoToken(v);
-                    if (v.startsWith("inf_") || v.startsWith("ip_")) {
-                      setProvider("infinitepay");
-                    } else if (
-                      v.startsWith("APP_USR-") ||
-                      v.startsWith("TEST-")
-                    ) {
+                    if (v.startsWith("APP_USR-") || v.startsWith("TEST-")) {
                       setProvider("mercadopago");
+                    } else if (v.trim() !== "") {
+                      setProvider("infinitepay");
                     }
                   }}
                   className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono"
                   placeholder={
-                    provider === "mercadopago" ? "APP_USR-..." : "inf_..."
+                    provider === "mercadopago"
+                      ? "APP_USR-..."
+                      : "sua-infinite-tag"
                   }
                 />
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {mercadopagoToken ? (
                   provider === "infinitepay" ? (
-                    "✅ Gateway detectado: InfinitePay"
+                    "✅ Gateway detectado: InfinitePay (InfiniteTag)"
                   ) : (
                     "✅ Gateway detectado: Mercado Pago"
                   )
                 ) : (
-                  "O provedor é detectado pelo prefixo do token"
+                  "Tokens APP_USR-/TEST- = Mercado Pago; qualquer outro valor = InfinitePay"
                 )}
               </p>
             </div>
