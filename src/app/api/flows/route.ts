@@ -64,6 +64,8 @@ export async function POST(req: NextRequest) {
             label: step.label || step.type,
             config: step.config || {},
             productId: step.productId || null,
+            positionX: typeof step.positionX === "number" ? step.positionX : null,
+            positionY: typeof step.positionY === "number" ? step.positionY : null,
             // nextStepId temporário (UUID do frontend) — mapeamos depois
           })),
         },
@@ -71,23 +73,45 @@ export async function POST(req: NextRequest) {
       include: { steps: { orderBy: { order: "asc" } } },
     });
 
-    // Mapear IDs antigos → novos para nextStepId/altNextStepId
+    // Mapear IDs antigos → novos para nextStepId/altNextStepId e arestas
     const oldToNew: Record<string, string> = {};
     (steps || []).forEach((s: any, i: number) => {
       if (s.id && flow.steps[i]) oldToNew[s.id] = flow.steps[i].id;
     });
 
-    // Atualizar nextStepId e altNextStepId com os IDs reais do banco
+    // Atualizar nextStepId, altNextStepId e arestas com os IDs reais do banco
     for (let i = 0; i < (steps || []).length; i++) {
       const step = steps[i];
       const dbStep = flow.steps[i];
       if (!dbStep) continue;
       const nextId = step.nextStepId ? oldToNew[step.nextStepId] : null;
       const altId = step.altNextStepId ? oldToNew[step.altNextStepId] : null;
-      if (nextId || altId || step.nextStepId || step.altNextStepId) {
+
+      // Remapeia arestas do grafo (config.outgoingEdges[].targetStepId)
+      const rawEdges = Array.isArray(step.config?.outgoingEdges)
+        ? (step.config.outgoingEdges as any[])
+        : [];
+      const remappedEdges = rawEdges.map((e: any) => ({
+        ...e,
+        targetStepId: e.targetStepId ? oldToNew[e.targetStepId] || null : null,
+      }));
+
+      if (
+        nextId ||
+        altId ||
+        step.nextStepId ||
+        step.altNextStepId ||
+        remappedEdges.length > 0
+      ) {
         await prisma.flowStep.update({
           where: { id: dbStep.id },
-          data: { nextStepId: nextId || null, altNextStepId: altId || null },
+          data: {
+            nextStepId: nextId || null,
+            altNextStepId: altId || null,
+            ...(remappedEdges.length > 0
+              ? { config: { ...(step.config || {}), outgoingEdges: remappedEdges } }
+              : {}),
+          },
         });
       }
     }

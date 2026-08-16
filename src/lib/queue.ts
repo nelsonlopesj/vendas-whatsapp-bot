@@ -111,6 +111,30 @@ export const timeoutWorker = new Worker(
       return;
     }
 
+    // Retomada de DELAY (grafo): só continua se a sessão ainda espera esse step
+    if (job.name === "delay") {
+      const { stepId, toStepId } = job.data;
+      const { default: prisma } = await import("./prisma");
+      const session = await prisma.flowSession.findUnique({
+        where: { id: sessionId },
+      });
+      if (
+        !session ||
+        session.currentStepId !== stepId ||
+        session.status !== "waiting_delay"
+      ) {
+        console.log(
+          `[FLOW-DELAY] job stale for session ${sessionId?.slice(-8)}, skipping`
+        );
+        return;
+      }
+      console.log(
+        `[FLOW-DELAY] resuming session ${sessionId?.slice(-8)} → ${toStepId}`
+      );
+      await FlowEngine.resumeGraph(sessionId, toStepId || null);
+      return;
+    }
+
     // Lembrete de remarketing PIX / follow-up pós-expiração
     if (job.name === "pix-reminder" && reminder) {
       const { default: prisma } = await import("./prisma");

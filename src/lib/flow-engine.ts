@@ -10,6 +10,14 @@ import prisma from "./prisma";
 import { EvolutionClient } from "./evolution";
 import { MercadoPagoClient } from "./mercadopago";
 import { detectPixProvider } from "./infinitepay";
+import {
+  hasGraphEdges,
+  resolveOutgoing,
+  resolveConditionTarget,
+  MAX_STEPS_PER_PASS,
+  MAX_EXEC_PER_STEP_PER_PASS,
+} from "./flow-graph";
+import { PORT_NEXT, PORT_ALT, PORT_TIMEOUT, PORT_BACK } from "./flow-types";
 
 // ===== Tipos =====
 
@@ -20,7 +28,7 @@ export interface FlowSession {
   currentStepId: string | null;
   customerPhone: string;
   customerName?: string | null;
-  status: "active" | "waiting_pix" | "timed_out" | "completed" | "failed";
+  status: "active" | "waiting_pix" | "waiting_delay" | "timed_out" | "completed" | "failed";
   variables: Record<string, string>;
   loopCounters: Record<string, number>;
   currentPixId?: string | null;
@@ -114,7 +122,9 @@ async function scheduleTimeout(
     const onTimeout = config.onTimeout || "exit";
     if (onTimeout !== "retry") return;
 
-    const retryCount = loopCounters[stepId] || 0;
+    // Namespace "retry:" evita colisão com contadores de LOOP
+    const retryKey = `retry:${stepId}`;
+    const retryCount = loopCounters[retryKey] ?? loopCounters[stepId] ?? 0;
     const { flowTimeoutQueue } = await import("./queue");
     await flowTimeoutQueue.add(
       "timeout",
@@ -237,7 +247,7 @@ async function generateTrustPix(
       pixCopyPaste: pix.pixCopyPaste,
       pixQrCode: pix.pixQrCodeBase64,
       pixExpiresAt: isInfinitePay ? null : new Date(pix.pixExpiration),
-      metadata: { trustMode: true, originalSale: true, gateway: isInfinitePay ? "infinitepay" : "mercadopago" },
+      metadata: { trustMode: true, originalSale: true, pixStepId: (pixStep as any)?.id || null, gateway: isInfinitePay ? "infinitepay" : "mercadopago" },
     },
   });
 
@@ -393,10 +403,26 @@ export class FlowEngine {
     let lastStatus = "active";
     let nextId: string | null = firstStep?.id || null;
 
+    const graphStart = hasGraphEdges(flow.steps as any[]);
+    let totalExec = 0;
+    const execCounts: Record<string, number> = {};
+    const loopCounters: Record<string, number> = {};
+
     while (currentStep && evolutionClient) {
       console.log(`[FLOW-STEP] executing step type=${currentStep.type} label=${currentStep.label}`);
       // Parar ANTES de executar WAIT_RESPONSE (depende de resposta do cliente)
       if (currentStep.type === "WAIT_RESPONSE") { console.log("[FLOW-STOP] breaking at WAIT_RESPONSE"); break; }
+
+      // Guarda de ciclo/budget
+      totalExec++;
+      execCounts[currentStep.id] = (execCounts[currentStep.id] || 0) + 1;
+      if (totalExec > MAX_STEPS_PER_PASS || execCounts[currentStep.id] > MAX_EXEC_PER_STEP_PER_PASS) {
+        console.error(`[FLOW-GUARD] budget/cycle exceeded at step ${currentStep.id} (startSession)`);
+        lastStatus = "failed";
+        nextId = currentStep.id;
+        await prisma.flowSession.update({ where: { id: session.id }, data: { status: "failed", failureReason: "cycle_or_budget", variables: allVars } });
+        return { action: "new_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, customerPhone: session.customerPhone, customerName: session.customerName, currentStepId: nextId, status: "failed", variables: allVars, loopCounters, currentPixId: pixId || null } };
+      }
 
       // GENERATE_PIX: executa e depois pausa
       const result = await FlowEngine.executeStep(
@@ -412,8 +438,33 @@ export class FlowEngine {
       lastStatus = result.status;
       nextId = result.nextStepId;
 
+      // Grafo: o próximo passo vem da aresta da porta "next"
+      // (LOOP é exceção: devolve o alvo da porta "back" quando continua o ciclo)
+      if (graphStart && result.status === "active" && currentStep.type !== "LOOP") {
+        const gNext = resolveOutgoing(flow.steps as any[], currentStep as any, PORT_NEXT);
+        if (gNext) { result.nextStepId = gNext; nextId = gNext; }
+      }
+
       // Se gerou PIX, pausa para aguardar pagamento
       if (result.status === "waiting_pix") { console.log("[FLOW-STOP] breaking at GENERATE_PIX (waiting_pix)"); break; }
+
+      // DELAY em grafo: pausa assíncrona (job retoma depois)
+      if (result.status === "waiting_delay") {
+        const delayMs = (result as any).delayMs || 5000;
+        nextId = currentStep.id;
+        await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: currentStep.id, status: "waiting_delay", variables: allVars, loopCounters } });
+        const { flowTimeoutQueue } = await import("./queue");
+        await flowTimeoutQueue.add(
+          "delay",
+          { sessionId: session.id, stepId: currentStep.id, toStepId: result.nextStepId },
+          { delay: delayMs, jobId: `delay-${session.id}-${currentStep.id}` }
+        );
+        console.log(`[FLOW-DELAY] scheduled ${delayMs}ms for step ${currentStep.id} in session ${session.id?.slice(-8)}`);
+        return {
+          action: "new_session",
+          session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, customerPhone: session.customerPhone, customerName: session.customerName, currentStepId: nextId, status: "waiting_delay", variables: allVars, loopCounters, currentPixId: pixId || null },
+        };
+      }
 
       // Parar se não tem próximo
       if (!result.nextStepId) break;
@@ -429,13 +480,13 @@ export class FlowEngine {
         status: lastStatus,
         variables: allVars,
         currentPixId: pixId || null,
+        loopCounters,
       },
     });
 
     // Agendar timeout se parou em WAIT_RESPONSE
-    scheduleTimeout(session.id, nextId, allVars, {});
+    scheduleTimeout(session.id, nextId, allVars, loopCounters);
 
-    const loopCounters: Record<string, number> = {};
     return {
       action: "new_session",
       session: {
@@ -483,6 +534,7 @@ export class FlowEngine {
     response?: string;
   }> {
     const steps: FlowStepData[] = session.flow?.steps || [];
+    const graph = hasGraphEdges(steps as any[]);
     const currentStep = steps.find(
       (s: FlowStepData) => s.id === session.currentStepId
     );
@@ -592,22 +644,32 @@ export class FlowEngine {
         const altKeywords = config.altKeywords || [];
 
         if (expected.length > 0 && matchResponse(message, expected)) {
-          nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
+          nextStepId = graph
+            ? resolveOutgoing(steps as any[], currentStep as any, PORT_NEXT)
+            : currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
         } else if (altKeywords.length > 0 && matchResponse(message, altKeywords)) {
-          // Se o próximo passo é um CONDITION, deixa o CONDITION decidir a rota
-          const naturalNext =
-            currentStep.nextStepId ||
-            steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id ||
-            null;
-          const nextIsCondition =
-            steps.find((s: FlowStepData) => s.id === naturalNext)?.type === "CONDITION";
-
-          if (nextIsCondition) {
-            nextStepId = naturalNext;
-          } else if (currentStep.altNextStepId) {
-            // Tem rota de recusa configurada: segue para ela
-            nextStepId = currentStep.altNextStepId;
+          if (graph) {
+            // Grafo: recusa segue a aresta da porta "alt" (sem aresta = despedida)
+            nextStepId = resolveOutgoing(steps as any[], currentStep as any, PORT_ALT);
           } else {
+            // Se o próximo passo é um CONDITION, deixa o CONDITION decidir a rota
+            const naturalNext =
+              currentStep.nextStepId ||
+              steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id ||
+              null;
+            const nextIsCondition =
+              steps.find((s: FlowStepData) => s.id === naturalNext)?.type === "CONDITION";
+
+            if (nextIsCondition) {
+              nextStepId = naturalNext;
+            } else if (currentStep.altNextStepId) {
+              // Tem rota de recusa configurada: segue para ela
+              nextStepId = currentStep.altNextStepId;
+            } else {
+              nextStepId = null;
+            }
+          }
+          if (!nextStepId) {
             // Sem rota de recusa: mensagem de despedida e encerra o fluxo
             const flowKeyword = session.flow?.triggerKeyword || "iniciar";
             const goodbye = (
@@ -648,38 +710,47 @@ export class FlowEngine {
           scheduleTimeout(session.id, currentStep.id, allVars, loopCounters);
         }
       } else if (currentStep.type === "CONDITION") {
-        // Avaliar condição e decidir rota
-        const varName = config.variable || "resposta";
-        const routes = config.routes || [];
-        let matched = false;
-
-        for (const route of routes) {
-          const routeValues = route.values || [];
-          if (
-            routeValues.includes("*") ||
-            matchResponse(message, routeValues, config.operator)
-          ) {
-            if (route.goToType === "next") {
-              nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
-            } else if (route.goToType === "alt") {
-              nextStepId = currentStep.altNextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
-            } else if (route.goToType === "prev") {
-              const prevStep = steps.find((s: FlowStepData) => s.order === currentStep.order - 1);
-              nextStepId = prevStep?.id || null;
-              const pConfig = (prevStep?.config || {}) as Record<string, any>;
-              const reply = route.message || pConfig.fallbackMessage || pConfig.retryMessage;
-              if (reply && evolutionClient) {
-                await evolutionClient.sendText({ number: session.customerPhone, text: reply });
-              }
-            }
-            matched = true;
-            break;
+        if (graph) {
+          // Grafo: rotas nomeadas com arestas explícitas (route:<id>)
+          const cr = resolveConditionTarget(steps as any[], currentStep as any, message);
+          if (cr.reply && evolutionClient) {
+            await evolutionClient.sendText({ number: session.customerPhone, text: cr.reply });
           }
-        }
+          nextStepId = cr.targetStepId;
+        } else {
+          // Legado: avaliação idêntica à atual (goToType next/alt/prev)
+          const varName = config.variable || "resposta";
+          const routes = config.routes || [];
+          let matched = false;
 
-        if (!matched) {
-          // Fallback: caminho padrão
-          nextStepId = currentStep.nextStepId;
+          for (const route of routes) {
+            const routeValues = route.values || [];
+            if (
+              routeValues.includes("*") ||
+              matchResponse(message, routeValues, config.operator)
+            ) {
+              if (route.goToType === "next") {
+                nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
+              } else if (route.goToType === "alt") {
+                nextStepId = currentStep.altNextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
+              } else if (route.goToType === "prev") {
+                const prevStep = steps.find((s: FlowStepData) => s.order === currentStep.order - 1);
+                nextStepId = prevStep?.id || null;
+                const pConfig = (prevStep?.config || {}) as Record<string, any>;
+                const reply = route.message || pConfig.fallbackMessage || pConfig.retryMessage;
+                if (reply && evolutionClient) {
+                  await evolutionClient.sendText({ number: session.customerPhone, text: reply });
+                }
+              }
+              matched = true;
+              break;
+            }
+          }
+
+          if (!matched) {
+            // Fallback: caminho padrão
+            nextStepId = currentStep.nextStepId;
+          }
         }
       }
     } else {
@@ -717,6 +788,8 @@ export class FlowEngine {
 
     // Executar passos em sequência até chegar em interação ou fim
     let cs = steps.find((s: FlowStepData) => s.id === nextStepId);
+    let totalExec = 0;
+    const execCounts: Record<string, number> = {};
     while (cs && evolutionClient) {
       if (cs.type === "WAIT_RESPONSE") {
         // WAIT_RESPONSE: pausa e espera input do cliente
@@ -726,7 +799,17 @@ export class FlowEngine {
       }
 
       if (cs.type === "CONDITION") {
-        // CONDITION (balãozinho): avalia a resposta recém-recebida e decide a rota
+        if (graph) {
+          // Grafo: rotas nomeadas com arestas — avalia a resposta recém-recebida
+          const cr = resolveConditionTarget(steps as any[], cs as any, message);
+          if (cr.reply && evolutionClient) {
+            await evolutionClient.sendText({ number: session.customerPhone, text: cr.reply });
+          }
+          if (!cr.targetStepId) break;
+          cs = steps.find((s: FlowStepData) => s.id === cr.targetStepId) || undefined;
+          continue;
+        }
+        // Legado: avaliação idêntica à atual
         const cConfig = (cs.config || {}) as Record<string, any>;
         const routes = cConfig.routes || [];
         let target = cs.nextStepId;
@@ -758,15 +841,45 @@ export class FlowEngine {
         continue;
       }
 
+      // Guarda de ciclo/budget (nunca executar em loop infinito)
+      totalExec++;
+      execCounts[cs.id] = (execCounts[cs.id] || 0) + 1;
+      if (totalExec > MAX_STEPS_PER_PASS || execCounts[cs.id] > MAX_EXEC_PER_STEP_PER_PASS) {
+        console.error(`[FLOW-GUARD] budget/cycle exceeded at step ${cs.id} (type=${cs.type})`);
+        await prisma.flowSession.update({ where: { id: session.id }, data: { status: "failed", failureReason: "cycle_or_budget", variables: allVars, loopCounters } });
+        return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: "failed", variables: allVars, loopCounters } };
+      }
+
       // GENERATE_PIX e outros: executa normalmente (com allVars mesclado)
       const mergedSession = { ...session, variables: allVars };
       const result = await FlowEngine.executeStep(cs, mergedSession, session.customerPhone, session.tenantId, evolutionClient, steps);
       allVars = { ...allVars, ...result.variables };
 
+      // Grafo: o próximo passo vem da aresta da porta "next"
+      // (LOOP é exceção: devolve o alvo da porta "back" quando continua o ciclo)
+      if (graph && result.status === "active" && cs.type !== "LOOP") {
+        const gNext = resolveOutgoing(steps as any[], cs as any, PORT_NEXT);
+        if (gNext) result.nextStepId = gNext;
+      }
+
       // Se gerou PIX, salva e pausa para aguardar pagamento
       if (result.status === "waiting_pix") {
         await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: result.nextStepId || cs.id, status: "waiting_pix", variables: allVars, loopCounters, currentPixId: result.pixId || null } });
         return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: result.nextStepId || cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: "waiting_pix", variables: allVars, loopCounters, currentPixId: result.pixId || null } };
+      }
+
+      // DELAY em grafo: pausa assíncrona (job retoma depois)
+      if (result.status === "waiting_delay") {
+        const delayMs = (result as any).delayMs || 5000;
+        await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: "waiting_delay", variables: allVars, loopCounters } });
+        const { flowTimeoutQueue } = await import("./queue");
+        await flowTimeoutQueue.add(
+          "delay",
+          { sessionId: session.id, stepId: cs.id, toStepId: result.nextStepId },
+          { delay: delayMs, jobId: `delay-${session.id}-${cs.id}` }
+        );
+        console.log(`[FLOW-DELAY] scheduled ${delayMs}ms for step ${cs.id} in session ${session.id?.slice(-8)}`);
+        return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: "waiting_delay", variables: allVars, loopCounters } };
       }
 
       if (!result.nextStepId) break;
@@ -1079,7 +1192,14 @@ export class FlowEngine {
               pixCopyPaste: pix.pixCopyPaste,
               pixQrCode: pix.pixQrCodeBase64,
               pixExpiresAt: isInfinitePay ? null : new Date(pix.pixExpiration),
-              metadata: { stepId: step.id, nextStepId: step.nextStepId, gateway: isInfinitePay ? "infinitepay" : "mercadopago" },
+              metadata: {
+                stepId: step.id,
+                pixStepId: step.id,
+                nextStepId: hasGraphEdges(allSteps as any[])
+                  ? resolveOutgoing(allSteps as any[], step as any, PORT_NEXT)
+                  : step.nextStepId,
+                gateway: isInfinitePay ? "infinitepay" : "mercadopago",
+              },
             },
           });
 
@@ -1263,6 +1383,19 @@ export class FlowEngine {
 
       case "DELAY": {
         const seconds = config.seconds || 2;
+        const graphMode = hasGraphEdges(allSteps as any[]);
+        if (graphMode) {
+          // Grafo: pausa assíncrona via job BullMQ (não bloqueia o worker)
+          const target = resolveOutgoing(allSteps as any[], step as any, PORT_NEXT);
+          return {
+            nextStepId: target,
+            status: "waiting_delay",
+            delayMs: seconds * 1000,
+            variables,
+            loopCounters,
+          } as any;
+        }
+        // Legado: comportamento atual (sleep síncrono)
         await new Promise(resolve => setTimeout(resolve, seconds * 1000));
         const nextByOrder = allSteps.find(s => s.order === step.order + 1);
         return {
@@ -1275,7 +1408,10 @@ export class FlowEngine {
 
       case "LOOP": {
         const maxIter = config.maxIterations || 3;
-        const currentIter = loopCounters[step.id] || 0;
+        // Namespace "loop:" evita colisão com retries de WAIT_RESPONSE;
+        // chave legada nua é lida como fallback para sessões antigas em voo
+        const loopKey = `loop:${step.id}`;
+        const currentIter = loopCounters[loopKey] ?? loopCounters[step.id] ?? 0;
         const exitCond = config.exitCondition || "";
 
         // Verificar condição de saída
@@ -1301,11 +1437,13 @@ export class FlowEngine {
         }
 
         // Continua loop: volta para o passo indicado
-        loopCounters[step.id] = currentIter + 1;
-        const backToStepId =
-          config.backToStepId ||
-          allSteps[config.backToStepIndex || 0]?.id ||
-          step.nextStepId;
+        loopCounters[loopKey] = currentIter + 1;
+        const graphLoop = hasGraphEdges(allSteps as any[]);
+        const backToStepId = graphLoop
+          ? resolveOutgoing(allSteps as any[], step as any, PORT_BACK)
+          : config.backToStepId ||
+            allSteps[config.backToStepIndex || 0]?.id ||
+            step.nextStepId;
 
         return {
           nextStepId: backToStepId,
@@ -1450,6 +1588,14 @@ export class FlowEngine {
             console.log(`[DELIVER] fallback search: currentStep=${currentStep?.type} deliverFound=${!!deliverStep}`);
           }
 
+          // Grafo: retoma a CADEIA do ramo a partir do passo seguinte ao PIX
+          // (entrega + mensagens de pós-venda do ramo, com seus timers)
+          if (deliverStepId && hasGraphEdges(steps as any[])) {
+            console.log(`[DELIVER] graph mode — resuming chain from ${deliverStepId}`);
+            await FlowEngine.resumeGraph(session.id, deliverStepId);
+            return { success: true, delivered: true };
+          }
+
           if (deliverStep) {
             const evolutionClient = new EvolutionClient({
               baseUrl: waUrl,
@@ -1511,7 +1657,11 @@ export class FlowEngine {
       ) {
         await prisma.sale.update({ where: { id: sale.id }, data: { status: "CANCELLED" } });
         if (session) {
-          const pixStep = session.flow?.steps?.find((s: any) => s.type === "GENERATE_PIX");
+          // Multi-ramo: usa o step exato que gerou o PIX (metadata.pixStepId),
+          // com fallback no primeiro GENERATE_PIX para vendas legadas
+          const pixStep =
+            session.flow?.steps?.find((s: any) => s.id === (sale.metadata as any)?.pixStepId) ||
+            session.flow?.steps?.find((s: any) => s.type === "GENERATE_PIX");
           const pixConfig = (pixStep?.config || {}) as Record<string, any>;
           const onExpired = pixConfig.onExpired || "exit";
           const flowKeyword = session.flow?.triggerKeyword || "iniciar";
@@ -1558,6 +1708,166 @@ export class FlowEngine {
   /**
    * Lida com timeout de sessão (WAIT_RESPONSE sem resposta)
    */
+  /**
+   * Retoma a cadeia do grafo a partir de um passo (entradas assíncronas:
+   * job de delay, porta timeout do WAIT_RESPONSE, entrega pós-pagamento).
+   */
+  static async resumeGraph(
+    sessionId: string,
+    entryStepId: string | null
+  ): Promise<void> {
+    if (!entryStepId) return;
+    const session = await prisma.flowSession.findUnique({
+      where: { id: sessionId },
+      include: { flow: { include: { steps: true } }, tenant: true },
+    });
+    if (!session) {
+      console.log(`[RESUME] session not found: ${sessionId}`);
+      return;
+    }
+    if (!["active", "waiting_pix", "waiting_delay"].includes(session.status)) {
+      console.log(`[RESUME] session status=${session.status}, skipping`);
+      return;
+    }
+
+    const waUrl =
+      session.tenant?.evolutionUrl ||
+      process.env.EZFLOW_WA_URL ||
+      "http://evolution:8080";
+    const waKey =
+      session.tenant?.evolutionApikey ||
+      process.env.EZFLOW_WA_KEY ||
+      process.env.EVOLUTION_API_KEY ||
+      "ezflow-master-key";
+    const evolutionClient = new EvolutionClient({
+      baseUrl: waUrl,
+      apikey: waKey,
+      instance: "default",
+    });
+
+    await FlowEngine.runChainFromStep(session, entryStepId, evolutionClient);
+  }
+
+  /**
+   * Executa passos em sequência a partir de um passo de entrada até
+   * WAIT_RESPONSE / waiting_pix / waiting_delay / fim. Com guardas.
+   */
+  private static async runChainFromStep(
+    session: any,
+    entryStepId: string,
+    evolutionClient: EvolutionClient
+  ): Promise<void> {
+    const steps: FlowStepData[] = session.flow?.steps || [];
+    const graph = hasGraphEdges(steps as any[]);
+    let cs = steps.find((s: FlowStepData) => s.id === entryStepId);
+    if (!cs) {
+      console.log(`[RESUME] entry step not found: ${entryStepId}`);
+      await prisma.flowSession.update({
+        where: { id: session.id },
+        data: { status: "completed", completedAt: new Date() },
+      });
+      return;
+    }
+
+    let allVars = (session.variables || {}) as Record<string, string>;
+    const loopCounters = (session.loopCounters || {}) as Record<
+      string,
+      number
+    >;
+    let totalExec = 0;
+    const execCounts: Record<string, number> = {};
+
+    while (cs) {
+      if (cs.type === "WAIT_RESPONSE") {
+        await prisma.flowSession.update({
+          where: { id: session.id },
+          data: { currentStepId: cs.id, status: "active", variables: allVars, loopCounters },
+        });
+        scheduleTimeout(session.id, cs.id, allVars, loopCounters);
+        return;
+      }
+
+      // Guarda de ciclo/budget
+      totalExec++;
+      execCounts[cs.id] = (execCounts[cs.id] || 0) + 1;
+      if (
+        totalExec > MAX_STEPS_PER_PASS ||
+        execCounts[cs.id] > MAX_EXEC_PER_STEP_PER_PASS
+      ) {
+        console.error(`[FLOW-GUARD] resumeChain budget exceeded at ${cs.id}`);
+        await prisma.flowSession.update({
+          where: { id: session.id },
+          data: { status: "failed", failureReason: "cycle_or_budget", variables: allVars, loopCounters },
+        });
+        return;
+      }
+
+      // CONDITION como entrada de retomada não tem mensagem para avaliar:
+      // para com segurança (aguarda a próxima resposta do cliente)
+      if (cs.type === "CONDITION") {
+        await prisma.flowSession.update({
+          where: { id: session.id },
+          data: { currentStepId: cs.id, status: "active", variables: allVars, loopCounters },
+        });
+        return;
+      }
+
+      const result = await FlowEngine.executeStep(
+        cs,
+        { ...session, variables: allVars },
+        session.customerPhone,
+        session.tenantId,
+        evolutionClient,
+        steps
+      );
+      allVars = { ...allVars, ...result.variables };
+
+      // Grafo: próximo passo pela aresta (LOOP é exceção — porta back)
+      if (graph && result.status === "active" && cs.type !== "LOOP") {
+        const gNext = resolveOutgoing(steps as any[], cs as any, PORT_NEXT);
+        if (gNext) result.nextStepId = gNext;
+      }
+
+      if (result.status === "waiting_pix") {
+        await prisma.flowSession.update({
+          where: { id: session.id },
+          data: { currentStepId: result.nextStepId || cs.id, status: "waiting_pix", variables: allVars, loopCounters, currentPixId: result.pixId || null },
+        });
+        return;
+      }
+
+      if (result.status === "waiting_delay") {
+        const delayMs = (result as any).delayMs || 5000;
+        await prisma.flowSession.update({
+          where: { id: session.id },
+          data: { currentStepId: cs.id, status: "waiting_delay", variables: allVars, loopCounters },
+        });
+        const { flowTimeoutQueue } = await import("./queue");
+        await flowTimeoutQueue.add(
+          "delay",
+          { sessionId: session.id, stepId: cs.id, toStepId: result.nextStepId },
+          { delay: delayMs, jobId: `delay-${session.id}-${cs.id}` }
+        );
+        console.log(`[FLOW-DELAY] (resume) scheduled ${delayMs}ms for step ${cs.id}`);
+        return;
+      }
+
+      if (!result.nextStepId) break;
+      cs = steps.find((s: FlowStepData) => s.id === result.nextStepId) || undefined;
+    }
+
+    await prisma.flowSession.update({
+      where: { id: session.id },
+      data: {
+        currentStepId: cs?.id || null,
+        status: cs?.id ? "active" : "completed",
+        completedAt: cs?.id ? undefined : new Date(),
+        variables: allVars,
+        loopCounters,
+      },
+    });
+  }
+
   static async handleTimeout(sessionId: string): Promise<void> {
     console.log(`[TIMEOUT] handleTimeout called for session ${sessionId?.slice(-8)}`);
     const session = await prisma.flowSession.findUnique({
@@ -1583,8 +1893,12 @@ export class FlowEngine {
       number
     >;
 
+    const graphTimeout = hasGraphEdges(steps as any[]);
+
     if (onTimeout === "retry") {
-      const retryCount = loopCounters[currentStep.id] || 0;
+      // Namespace "retry:" (fallback na chave legada para sessões em voo)
+      const retryKey = `retry:${currentStep.id}`;
+      const retryCount = loopCounters[retryKey] ?? loopCounters[currentStep.id] ?? 0;
       if (retryCount < (config.maxRetries || 2) && config.retryMessage) {
         // Reenviar mensagem — usa config do tenant ou fallback global
         const waUrl = session.tenant.evolutionUrl || process.env.EZFLOW_WA_URL || "http://evolution:8080";
@@ -1600,7 +1914,7 @@ export class FlowEngine {
           text: config.retryMessage,
         });
 
-        loopCounters[currentStep.id] = retryCount + 1;
+        loopCounters[retryKey] = retryCount + 1;
         await prisma.flowSession.update({
           where: { id: sessionId },
           data: {
@@ -1611,6 +1925,20 @@ export class FlowEngine {
         // Reagendar próximo timeout
         await scheduleTimeout(sessionId, currentStep.id, (session.variables || {}) as Record<string, string>, loopCounters);
         return;
+      }
+
+      // Retries esgotadas — grafo com porta "timeout" segue a aresta (follow-up do ramo)
+      if (graphTimeout) {
+        const timeoutTarget = resolveOutgoing(
+          steps as any[],
+          currentStep as any,
+          PORT_TIMEOUT
+        );
+        if (timeoutTarget) {
+          console.log(`[TIMEOUT] graph timeout edge → ${timeoutTarget}`);
+          await FlowEngine.resumeGraph(sessionId, timeoutTarget);
+          return;
+        }
       }
     }
 
