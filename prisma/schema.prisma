@@ -103,6 +103,8 @@ model FlowStep {
   // Conexões de saída para branching visual
   nextStepId    String?   // Próximo passo padrão (null = fim do fluxo)
   altNextStepId String?   // Próximo passo alternativo (para CONDITION: rota "não")
+  positionX     Float?    // Posição do nó no canvas (grafo; null = auto-layout)
+  positionY     Float?    // Posição do nó no canvas (grafo; null = auto-layout)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 }
