@@ -735,7 +735,7 @@ function getDefaultConfig(type: string): Record<string, any> {
         routes: [
           { values: ["sim", "yes"], goToType: "next" },
           { values: ["não", "no"], goToType: "alt" },
-          { values: ["*"], goToType: "prev" },
+          { values: ["*"], goToType: "prev", message: "" },
         ],
       };
     case "LOOP":
@@ -1363,47 +1363,91 @@ function StepConfigPanel({
               <option value="equals">Igual a</option>
               <option value="not_contains">Não contém</option>
             </select>
-            <input
-              type="text"
-              value={(config.routes?.[0]?.values || []).join(", ")}
-              onChange={(e) => {
-                const values = e.target.value
-                  .split(",")
-                  .map((s: string) => s.trim().toLowerCase());
-                onUpdateConfig({
-                  routes: [
-                    { values, goToType: "next" },
-                    { values: ["*"], goToType: "alt" },
-                  ],
-                });
-              }}
-              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
-              placeholder="Valores para rota SIM (ex: sim, quero, yes)"
-            />
-            <input
-              type="text"
-              value={(config.routes?.[1]?.values || [])
-                .filter((v: string) => v !== "*")
-                .join(", ")}
-              onChange={(e) => {
-                const values = e.target.value
-                  .split(",")
-                  .map((s: string) => s.trim().toLowerCase());
-                onUpdateConfig({
-                  routes: [
-                    config.routes?.[0] || { values: [], goToType: "next" },
-                    { values: [...values, "*"], goToType: "alt" },
-                  ],
-                });
-              }}
-              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
-              placeholder="Valores para rota NÃO (ex: não, nao, no)"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Tudo que não bater com a lista de SIM vai para o{" "}
-              <strong>Passo de recusa</strong> — não precisa listar todos os
-              &quot;nãos&quot; possíveis
-            </p>
+            <div>
+              <label className="block text-xs font-medium mb-1 mt-2">
+                Respostas que seguem em frente (SIM)
+              </label>
+              <input
+                type="text"
+                value={(config.routes?.[0]?.values || []).join(", ")}
+                onChange={(e) => {
+                  const values = e.target.value
+                    .split(",")
+                    .map((s: string) => s.trim().toLowerCase());
+                  onUpdateConfig({
+                    routes: [
+                      { values, goToType: "next" },
+                      config.routes?.[1] || { values: [], goToType: "alt" },
+                      config.routes?.[2] || {
+                        values: ["*"],
+                        goToType: "prev",
+                        message: "",
+                      },
+                    ],
+                  });
+                }}
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+                placeholder="sim, quero, yes"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">
+                Respostas de desinteresse (NÃO)
+              </label>
+              <input
+                type="text"
+                value={(config.routes?.[1]?.values || []).join(", ")}
+                onChange={(e) => {
+                  const values = e.target.value
+                    .split(",")
+                    .map((s: string) => s.trim().toLowerCase());
+                  onUpdateConfig({
+                    routes: [
+                      config.routes?.[0] || { values: [], goToType: "next" },
+                      { values, goToType: "alt" },
+                      config.routes?.[2] || {
+                        values: ["*"],
+                        goToType: "prev",
+                        message: "",
+                      },
+                    ],
+                  });
+                }}
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+                placeholder="não, quero não, desisto, sair"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">
+                Mensagem para outras respostas (dúvidas)
+              </label>
+              <textarea
+                value={config.routes?.[2]?.message || ""}
+                onChange={(e) =>
+                  onUpdateConfig({
+                    routes: [
+                      config.routes?.[0] || { values: [], goToType: "next" },
+                      config.routes?.[1] || { values: [], goToType: "alt" },
+                      {
+                        values: ["*"],
+                        goToType: "prev",
+                        message: e.target.value,
+                      },
+                    ],
+                  })
+                }
+                rows={2}
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+                placeholder="Ex: É um PDF com checklist completo! Digite SIM para adquirir 😊"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Enviada quando o cliente digita algo fora das listas (ex:
+                &quot;é pdf?&quot;). Depois o fluxo volta para a pergunta e
+                aguarda de novo — o comportamento que você usa hoje. Se ficar
+                vazia, usa a &quot;Resposta para mensagem inesperada&quot; da
+                pergunta anterior.
+              </p>
+            </div>
           </div>
         </div>
       )}

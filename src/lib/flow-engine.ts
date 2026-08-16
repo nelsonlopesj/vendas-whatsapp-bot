@@ -663,6 +663,14 @@ export class FlowEngine {
               nextStepId = currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
             } else if (route.goToType === "alt") {
               nextStepId = currentStep.altNextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
+            } else if (route.goToType === "prev") {
+              const prevStep = steps.find((s: FlowStepData) => s.order === currentStep.order - 1);
+              nextStepId = prevStep?.id || null;
+              const pConfig = (prevStep?.config || {}) as Record<string, any>;
+              const reply = route.message || pConfig.fallbackMessage || pConfig.retryMessage;
+              if (reply && evolutionClient) {
+                await evolutionClient.sendText({ number: session.customerPhone, text: reply });
+              }
             }
             matched = true;
             break;
@@ -731,13 +739,14 @@ export class FlowEngine {
             if (route.goToType === "alt") {
               target = cs.altNextStepId || null;
             } else if (route.goToType === "prev") {
-              // Voltar ao passo anterior (re-perguntar)
+              // Voltar ao passo anterior (re-perguntar) — usado para dúvidas:
+              // envia a mensagem da rota e volta para a pergunta
               const prevStep = steps.find((s: FlowStepData) => s.order === cs!.order - 1);
               target = prevStep?.id || null;
-              if (prevStep?.type === "WAIT_RESPONSE" && evolutionClient) {
-                const pConfig = (prevStep.config || {}) as Record<string, any>;
-                const reAsk = pConfig.retryMessage || pConfig.fallbackMessage;
-                if (reAsk) await evolutionClient.sendText({ number: session.customerPhone, text: reAsk });
+              const pConfig = (prevStep?.config || {}) as Record<string, any>;
+              const reAsk = route.message || pConfig.fallbackMessage || pConfig.retryMessage;
+              if (reAsk && evolutionClient) {
+                await evolutionClient.sendText({ number: session.customerPhone, text: reAsk });
               }
             }
             // "next" (padrão) mantém cs.nextStepId
