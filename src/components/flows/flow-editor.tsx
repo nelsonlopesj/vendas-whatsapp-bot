@@ -1172,17 +1172,22 @@ function StepConfigPanel({
               Mensagem separada enviada logo após o código PIX
             </p>
           </div>
-          <div className="flex items-center gap-2 mt-2">
-            <input
-              type="checkbox"
-              id="paymentLink"
-              checked={config.paymentLink === true}
-              onChange={(e) => onUpdateConfig({ paymentLink: e.target.checked })}
-              className="rounded border-input"
-            />
-            <label htmlFor="paymentLink" className="text-xs font-medium">
-              Enviar também link de pagamento (Checkout Pro — PIX)
+          <div>
+            <label className="block text-xs font-medium mb-1 mt-3">
+              Forma de pagamento
             </label>
+            <select
+              value={config.paymentMode || (config.paymentLink ? "both" : "pix")}
+              onChange={(e) => onUpdateConfig({ paymentMode: e.target.value })}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
+            >
+              <option value="pix">PIX copia-e-cola (padrão)</option>
+              <option value="link">Link de pagamento (principal)</option>
+              <option value="both">PIX + Link (os dois)</option>
+            </select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Com InfinitePay o link é sempre usado (não há código PIX)
+            </p>
           </div>
           <div className="border-t border-border pt-3 mt-3">
             <label className="block text-xs font-semibold mb-2">

@@ -958,15 +958,36 @@ export class FlowEngine {
           }
           if (pixError) throw pixError;
 
-          if (isInfinitePay) {
-            // Checkout Integrado: envia o link de pagamento (PIX ou cartão na página deles)
+          // Forma de pagamento: "pix" (padrão) | "link" | "both"
+          // Fluxos antigos com paymentLink=true viram "both"
+          const paymentMode = isInfinitePay
+            ? "link"
+            : ((config.paymentMode as string) || (config.paymentLink ? "both" : "pix"));
+
+          // Checkout Pro (Mercado Pago) — criado quando o link faz parte do modo
+          let checkoutUrl = "";
+          if (!isInfinitePay && (paymentMode === "link" || paymentMode === "both")) {
+            try {
+              const mpCheckout = new MercadoPagoClient(token);
+              checkoutUrl =
+                (await mpCheckout.createCheckoutLink({
+                  amount: price,
+                  description,
+                  expirationMinutes: config.expirationMinutes || 30,
+                })) || "";
+            } catch (err: any) {
+              console.error("[PIX-LINK] failed to create checkout link:", err.message);
+            }
+          }
+
+          if (paymentMode === "link") {
+            // Link como forma principal (sem código PIX) — InfinitePay e MP link
             await evolutionClient.sendText({
               number: phone,
-              text: `💳 *Pagamento*\n\n📦 *Produto:* ${description}\n💰 *Valor:* R$ ${price.toFixed(2)}\n\n👉 Pague pelo link abaixo (PIX ou cartão):\n${pix.pixCopyPaste}`,
+              text: `💳 *Pagamento*\n\n📦 *Produto:* ${description}\n💰 *Valor:* R$ ${price.toFixed(2)}\n\n👉 Pague pelo link abaixo:\n${checkoutUrl || pix.pixCopyPaste}`,
             });
           } else {
-            // Enviar PIX para o cliente
-            // Enviar resumo primeiro
+            // PIX copia-e-cola (com link adicional quando "both")
             await evolutionClient.sendText({
               number: phone,
               text: `💳 *Pagamento via PIX*\n\n📦 *Produto:* ${description}\n💰 *Valor:* R$ ${price.toFixed(2)}\n⏰ *Vence em:* ${config.expirationMinutes || 30} minutos`,
@@ -983,21 +1004,11 @@ export class FlowEngine {
                 text: config.instructionMessage,
               });
             }
-          }
-
-          // Link de pagamento via Checkout Pro (opcional, apenas Mercado Pago)
-          if (config.paymentLink && !isInfinitePay) {
-            try {
-              const mpCheckout = new MercadoPagoClient(token);
-              const checkoutUrl = await mpCheckout.createCheckoutLink({ amount: price, description, expirationMinutes: config.expirationMinutes || 30 });
-              if (checkoutUrl) {
-                await evolutionClient.sendText({
-                  number: phone,
-                  text: `💻 *Ou pague pelo link:*\n${checkoutUrl}`,
-                });
-              }
-            } catch (err: any) {
-              console.error("[PIX-LINK] failed to create checkout link:", err.message);
+            if (paymentMode === "both" && checkoutUrl) {
+              await evolutionClient.sendText({
+                number: phone,
+                text: `💻 *Ou pague pelo link:*\n${checkoutUrl}`,
+              });
             }
           }
 
