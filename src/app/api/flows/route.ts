@@ -11,16 +11,25 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
-  const flows = await prisma.flow.findMany({
-    where: { tenantId },
-    include: {
-      steps: { orderBy: { order: "asc" } },
-      _count: { select: { sessions: true, sales: true } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  try {
+    const flows = await prisma.flow.findMany({
+      where: { tenantId },
+      include: {
+        steps: { orderBy: { order: "asc" } },
+        _count: { select: { sessions: true, sales: true } },
+      },
+      orderBy: { createdAt: "desc" },
+    });
 
-  return NextResponse.json({ flows });
+    return NextResponse.json({ flows });
+  } catch (error: any) {
+    console.error("Flow list error:", error.message);
+    // Sempre JSON (nunca página HTML 500) — o frontend parseia
+    return NextResponse.json(
+      { error: "Erro ao listar fluxos", detail: error.message },
+      { status: 500 }
+    );
+  }
 }
 
 // Criar fluxo
