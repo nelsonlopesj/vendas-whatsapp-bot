@@ -2,15 +2,29 @@
   "name": "Guia da Noiva",
   "triggerKeyword": "noiva",
   "triggerMode": "contains",
-  "version": "1.0",
-  "description": "Fluxo de venda para Guia/PDF de Noiva. Saudação profissional, confirmação e PIX.",
+  "version": "2.0",
+  "description": "Fluxo de venda para Guia/PDF de Noiva. Saudação profissional, decisão com balãozinho (sim/desinteresse/dúvidas) e PIX.",
   "price": 19.90,
   "steps": [
-    { "order": 1, "type": "DELAY", "label": "Delay", "config": { "seconds": 2 } },
-    { "order": 2, "type": "SEND_MESSAGE", "label": "Saudação", "config": { "text": "Olá, noivinha! 💍\n\nVi que você se interessou pelo nosso Guia Completo da Noiva — um material exclusivo com checklist, dicas de fornecedores e planejamento completo para o grande dia.\n\nO valor é R$ {{product.price}} e você recebe na hora.\nQuer adquirir? Digite SIM que já envio!" } },
-    { "order": 3, "type": "WAIT_RESPONSE", "label": "Confirmação", "config": { "expected": ["sim", "quero", "yes"], "maxRetries": 2, "retryMessage": "Posso te ajudar? Digite SIM para adquirir o Guia da Noiva 💍" } },
-    { "order": 4, "type": "DELAY", "label": "Delay", "config": { "seconds": 1 } },
-    { "order": 5, "type": "GENERATE_PIX", "label": "Gerar PIX", "config": {} },
-    { "order": 6, "type": "DELIVER_PRODUCT", "label": "Entrega", "config": { "message": "Aqui está seu Guia da Noiva! 💍\n\nEspero que ajude muito no seu planejamento. Qualquer dúvida é só chamar!" } }
+    { "id": "t1", "order": 1, "type": "DELAY", "label": "Delay", "positionX": 0, "positionY": 0, "config": { "seconds": 2, "outgoingEdges": [ { "id": "e1", "port": "next", "targetStepId": "t2" } ] } },
+    { "id": "t2", "order": 2, "type": "SEND_MESSAGE", "label": "Saudação", "positionX": 280, "positionY": 0, "config": { "text": "Olá, noivinha! 💍\n\nVi que você se interessou pelo nosso Guia Completo da Noiva — um material exclusivo com checklist, dicas de fornecedores e planejamento completo para o grande dia.\n\nO valor é R$ {{product.price}} e você recebe na hora.\nQuer adquirir? Digite SIM que já envio!", "outgoingEdges": [ { "id": "e2", "port": "next", "targetStepId": "t3" } ] } },
+    { "id": "t3", "order": 3, "type": "WAIT_RESPONSE", "label": "Confirmação", "positionX": 560, "positionY": 0, "config": { "expected": ["sim", "quero", "yes"], "timeout": 3600, "onTimeout": "exit", "retryMessage": "Posso te ajudar? Digite SIM para adquirir o Guia da Noiva 💍", "maxRetries": 2, "outgoingEdges": [ { "id": "e3", "port": "next", "targetStepId": "t4" } ] } },
+    { "id": "t4", "order": 4, "type": "CONDITION", "label": "Decisão", "positionX": 840, "positionY": 0, "config": {
+      "operator": "contains_any",
+      "routes": [
+        { "id": "sim", "name": "Sim", "values": ["sim", "quero", "yes"], "message": "" },
+        { "id": "neg", "name": "Desinteresse", "values": ["não", "nao", "no", "quero não", "quero nao", "não quero", "nao quero", "desisto", "sair", "cancelar"], "message": "" },
+        { "id": "duv", "name": "Dúvidas", "values": ["*"], "message": "O Guia Completo da Noiva é um PDF com checklist, fornecedores e planejamento completo do grande dia. 💍 Digite SIM para adquirir!" }
+      ],
+      "outgoingEdges": [
+        { "id": "e4", "port": "route:sim", "targetStepId": "t5" },
+        { "id": "e5", "port": "route:neg", "targetStepId": "t8" },
+        { "id": "e6", "port": "route:duv", "targetStepId": "t3" }
+      ]
+    } },
+    { "id": "t5", "order": 5, "type": "GENERATE_PIX", "label": "Gerar PIX", "positionX": 1120, "positionY": 0, "config": { "expirationMinutes": 30, "paymentMode": "pix", "instructionMessage": "Copie o código acima e cole no app do seu banco para pagar. O pagamento é confirmado na hora!", "outgoingEdges": [ { "id": "e7", "port": "next", "targetStepId": "t6" } ] } },
+    { "id": "t6", "order": 6, "type": "DELIVER_PRODUCT", "label": "Entrega", "positionX": 1400, "positionY": 0, "config": { "message": "Aqui está seu Guia da Noiva! 💍\n\nEspero que ajude muito no seu planejamento. Qualquer dúvida é só chamar!", "outgoingEdges": [ { "id": "e8", "port": "next", "targetStepId": "t7" } ] } },
+    { "id": "t7", "order": 7, "type": "SEND_MESSAGE", "label": "Pós-venda", "positionX": 1680, "positionY": 0, "config": { "text": "Obrigada pela confiança! 💕 Se conhecer outras noivinhas, indica pra gente! 👰", "outgoingEdges": [] } },
+    { "id": "t8", "order": 8, "type": "SEND_MESSAGE", "label": "Despedida", "positionX": 1120, "positionY": 160, "config": { "text": "Tudo bem! 😊 Se mudar de ideia, é só me enviar *noiva* novamente. 👋", "outgoingEdges": [] } }
   ]
 }

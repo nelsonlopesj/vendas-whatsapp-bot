@@ -73,10 +73,14 @@ export default function FlowsPage() {
             triggerKeyword: data.triggerKeyword || "",
             triggerMode: data.triggerMode || "contains",
             steps: (data.steps || []).map((s: any, i: number) => ({
+              // ids estáveis permitem remapear arestas (v2)
+              id: s.id || undefined,
               type: s.type,
               label: s.label || s.type,
               config: s.config || {},
               productId: null,
+              positionX: s.positionX ?? null,
+              positionY: s.positionY ?? null,
             })),
           }),
         });

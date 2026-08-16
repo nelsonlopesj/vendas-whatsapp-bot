@@ -698,6 +698,24 @@ export class FlowEngine {
               },
             };
           }
+        } else if (graph) {
+          // Grafo: se o próximo passo é um CONDITION, encaminha QUALQUER resposta
+          // para ele decidir (o fallback fica por conta da rota "*" do CONDITION)
+          const nextTarget = resolveOutgoing(steps as any[], currentStep as any, PORT_NEXT);
+          const nextIsCondition =
+            steps.find((s: FlowStepData) => s.id === nextTarget)?.type === "CONDITION";
+          if (nextIsCondition) {
+            nextStepId = nextTarget;
+          } else {
+            // Sem CONDITION na sequência: fallback atual (sem consumir retries)
+            const replyMsg = config.fallbackMessage || config.retryMessage;
+            if (replyMsg && evolutionClient) {
+              await evolutionClient.sendText({ number: session.customerPhone, text: replyMsg });
+            }
+            nextStepId = currentStep.id; // Fica aguardando
+            await prisma.flowSession.update({ where: { id: session.id }, data: { variables: allVars, loopCounters } });
+            scheduleTimeout(session.id, currentStep.id, allVars, loopCounters);
+          }
         } else {
           // Resposta não esperada — envia fallback sem consumir retries
           const replyMsg = config.fallbackMessage || config.retryMessage;
