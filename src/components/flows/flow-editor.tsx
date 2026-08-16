@@ -710,21 +710,6 @@ function getDefaultConfig(type: string): Record<string, any> {
       return {
         variable: "resposta",
         expected: ["sim", "quero", "yes"],
-        altKeywords: [
-          "não",
-          "nao",
-          "no",
-          "quero não",
-          "quero nao",
-          "não quero",
-          "nao quero",
-          "desisto",
-          "desistir",
-          "sair",
-          "cancelar",
-        ],
-        altMessage:
-          "Tudo bem! 😊 Se mudar de ideia, é só me enviar *{{keyword}}* novamente.",
         timeout: 3600,
         onTimeout: "exit",
         retryMessage: "Ainda está aí?",
@@ -809,12 +794,12 @@ function StepConfigPanel({
         />
       </div>
 
-      {/* Passo alternativo — só para CONDITION e WAIT_RESPONSE */}
-      {(step.type === "CONDITION" || step.type === "WAIT_RESPONSE") && (
+      {/* Rotas do balãozinho CONDITION */}
+      {step.type === "CONDITION" && (
         <>
         <div>
           <label className="block text-xs font-medium mb-1">
-            Próximo se SIM / OK
+            Próximo passo se a resposta for SIM
           </label>
           <select
             value={step.nextStepId || ""}
@@ -829,14 +814,14 @@ function StepConfigPanel({
         </div>
         <div>
           <label className="block text-xs font-medium mb-1">
-            Passo alternativo (recusa/falha)
+            Passo de recusa (qualquer outra resposta)
           </label>
           <select
             value={step.altNextStepId || ""}
             onChange={(e) => onSetAltNextStep(e.target.value || undefined)}
             className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
           >
-            <option value="">Encerrar como falha</option>
+            <option value="">Encerrar o fluxo</option>
             {allSteps
               .filter((s) => s.id !== step.id)
               .map((s) => (
@@ -845,6 +830,11 @@ function StepConfigPanel({
                 </option>
               ))}
           </select>
+          <p className="text-xs text-muted-foreground mt-1">
+            Quando o cliente responde algo fora da lista de SIM (ex: &quot;não&quot;,
+            &quot;quanto custa?&quot;), o fluxo vem para cá. Ideal: um passo de
+            despedida com {"{{keyword}}"}.
+          </p>
         </div>
         </>
       )}
@@ -979,19 +969,12 @@ function StepConfigPanel({
               placeholder="sim, quero, yes"
             />
           </div>
-          <div>
-            <label className="block text-xs font-medium mb-1 mt-3">
-              Palavras de desinteresse (separadas por vírgula)
-            </label>
-            <input
-              type="text"
-              value={(config.altKeywords || []).join(", ")}
-              onChange={(e) => onUpdateConfig({ altKeywords: e.target.value.split(",").map((s: string) => s.trim().toLowerCase()).filter(Boolean) })}
-              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="não, quero não, desisto, sair"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Se o cliente digitar uma dessas, o fluxo vai para o &quot;Passo alternativo (recusa/falha)&quot; acima, em vez de repetir o produto
+          <div className="p-3 rounded-lg bg-muted/30 mt-3">
+            <p className="text-xs text-muted-foreground">
+              💡 Para tratar desinteresse (cliente digita &quot;não&quot;), adicione um
+              passo <strong>Condicional</strong> logo depois desta pergunta: ele
+              envia respostas SIM para frente e qualquer outra resposta para um
+              passo de despedida.
             </p>
           </div>
           <div>
@@ -1050,21 +1033,6 @@ function StepConfigPanel({
             />
             <p className="text-xs text-muted-foreground mt-1">
               Enviada quando o cliente digita algo diferente do esperado (ex: &quot;é pdf?&quot;)
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs font-medium mb-1 mt-3">
-              Mensagem de despedida (ao detectar desinteresse sem rota de recusa)
-            </label>
-            <textarea
-              value={config.altMessage || ""}
-              onChange={(e) => onUpdateConfig({ altMessage: e.target.value })}
-              rows={2}
-              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-              placeholder="Tudo bem! 😊 Se mudar de ideia, é só me enviar *{{keyword}}* novamente."
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Use {"{{keyword}}"} para citar a palavra que reinicia o fluxo. Só é usada quando não há &quot;Passo alternativo (recusa/falha)&quot; definido
             </p>
           </div>
           <div>
@@ -1431,6 +1399,11 @@ function StepConfigPanel({
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm"
               placeholder="Valores para rota NÃO (ex: não, nao, no)"
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Tudo que não bater com a lista de SIM vai para o{" "}
+              <strong>Passo de recusa</strong> — não precisa listar todos os
+              &quot;nãos&quot; possíveis
+            </p>
           </div>
         </div>
       )}

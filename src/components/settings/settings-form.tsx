@@ -21,19 +21,44 @@ interface SettingsFormProps {
 }
 
 export function SettingsForm({ tenant }: SettingsFormProps) {
+  const detectProvider = (v: string): "mercadopago" | "infinitepay" =>
+    v &&
+    !v.startsWith("APP_USR-") &&
+    !v.startsWith("TEST-") &&
+    v.trim() !== ""
+      ? "infinitepay"
+      : "mercadopago";
+
   const [mercadopagoToken, setMercadopagoToken] = useState(
     tenant.mercadopagoToken || ""
   );
+  // Token efetivamente salvo no banco (para mostrar o gateway ATIVO)
+  const [savedToken, setSavedToken] = useState(tenant.mercadopagoToken || "");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
   const [provider, setProvider] = useState<"mercadopago" | "infinitepay">(
-    tenant.mercadopagoToken &&
-      !tenant.mercadopagoToken.startsWith("APP_USR-") &&
-      !tenant.mercadopagoToken.startsWith("TEST-")
-      ? "infinitepay"
-      : "mercadopago"
+    detectProvider(tenant.mercadopagoToken || "")
   );
+
+  const activeProvider = detectProvider(savedToken);
+
+  // Troca o provedor selecionado; limpa o campo se o token atual não servir
+  const switchProvider = (p: "mercadopago" | "infinitepay") => {
+    setProvider(p);
+    if (detectProvider(mercadopagoToken) !== p || mercadopagoToken.trim() === "") {
+      setMercadopagoToken("");
+      setMessage(
+        `Agora cole ${
+          p === "mercadopago"
+            ? "o Access Token do Mercado Pago (APP_USR-...)"
+            : "sua InfiniteTag (sem o $)"
+        } no campo abaixo e clique em Salvar.`
+      );
+    } else {
+      setMessage("");
+    }
+  };
 
   // WhatsApp state
   const [qrCode, setQrCode] = useState<string | null>(null);
@@ -88,7 +113,18 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
       body: JSON.stringify({ mercadopagoToken }),
     });
     setSaving(false);
-    setMessage(res.ok ? "✅ Salvo!" : "❌ Erro.");
+    if (res.ok) {
+      setSavedToken(mercadopagoToken);
+      const active =
+        mercadopagoToken.trim() === ""
+          ? "nenhum (pagamentos desativados)"
+          : detectProvider(mercadopagoToken) === "mercadopago"
+            ? "Mercado Pago"
+            : "InfinitePay";
+      setMessage(`✅ Salvo! Gateway ativo: ${active}.`);
+    } else {
+      setMessage("❌ Erro ao salvar.");
+    }
   };
 
   return (
@@ -198,7 +234,7 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
             <div className="inline-flex rounded-lg border border-border overflow-hidden">
               <button
                 type="button"
-                onClick={() => setProvider("mercadopago")}
+                onClick={() => switchProvider("mercadopago")}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
                   provider === "mercadopago"
                     ? "bg-primary text-primary-foreground"
@@ -209,7 +245,7 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
               </button>
               <button
                 type="button"
-                onClick={() => setProvider("infinitepay")}
+                onClick={() => switchProvider("infinitepay")}
                 className={`px-4 py-2 text-sm font-medium transition-colors ${
                   provider === "infinitepay"
                     ? "bg-primary text-primary-foreground"
@@ -218,6 +254,35 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
               >
                 InfinitePay
               </button>
+            </div>
+
+            {/* Status do gateway ativo */}
+            <div className="p-3 rounded-lg bg-muted/30">
+              <p className="text-xs">
+                {savedToken.trim() === "" ? (
+                  <span className="text-amber-600">
+                    ⚠️ Nenhum gateway configurado — pagamentos desativados
+                  </span>
+                ) : (
+                  <>
+                    Gateway ativo agora:{" "}
+                    <strong>
+                      {activeProvider === "mercadopago"
+                        ? "Mercado Pago"
+                        : "InfinitePay"}
+                    </strong>
+                  </>
+                )}
+                {savedToken.trim() !== "" && provider !== activeProvider && (
+                  <span className="block text-amber-600 mt-1">
+                    Para trocar para{" "}
+                    {provider === "mercadopago"
+                      ? "Mercado Pago"
+                      : "InfinitePay"}, cole o token dele no campo abaixo e
+                    clique em Salvar.
+                  </span>
+                )}
+              </p>
             </div>
 
             {provider === "mercadopago" ? (
@@ -308,13 +373,6 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
                 )}
               </p>
             </div>
-
-            {mercadopagoToken && (
-              <div className="p-3 rounded-lg bg-green-500/5 border border-green-500/20">
-                <CheckCircle2 className="w-4 h-4 text-green-500 inline mr-2" />
-                <span className="text-sm text-green-700">Token pronto!</span>
-              </div>
-            )}
 
             <button
               type="button"
