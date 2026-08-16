@@ -22,6 +22,8 @@ import {
   Upload,
 } from "lucide-react";
 import { clsx } from "clsx";
+import { migrateLegacyToGraph, autoLayout, detectUnsafeCycles } from "@/lib/flow-graph";
+import { FlowCanvas } from "./graph/FlowCanvas";
 
 // Tipos de passo disponíveis
 const STEP_TYPES = [
@@ -133,6 +135,8 @@ interface FlowStep {
   productId?: string | null;
   nextStepId?: string | null;
   altNextStepId?: string | null;
+  positionX?: number | null;
+  positionY?: number | null;
 }
 
 interface FlowEditorProps {
@@ -151,8 +155,15 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [insertAtIdx, setInsertAtIdx] = useState<number | null>(null);
+  // Modo grafo: fluxos novos nascem em canvas; fluxos legados abrem em lista
+  const [graphMode, setGraphMode] = useState<boolean>(!flowId);
 
   const selectedStep = steps.find((s) => s.id === selectedStepId);
+
+  // Detecta se o fluxo já é grafo (algum passo tem outgoingEdges)
+  const flowIsGraph = steps.some(
+    (s) => Array.isArray(s.config?.outgoingEdges) && s.config.outgoingEdges.length > 0
+  );
 
   // Drag and drop handlers
   const handleDragStart = (idx: number) => { setDragIdx(idx); };
@@ -177,24 +188,31 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
           setFlowName(data.flow.name);
           setTriggerKeyword(data.flow.triggerKeyword);
           setTriggerMode(data.flow.triggerMode);
-          setSteps(
-            (data.flow.steps || []).map((s: any) => ({
-              id: s.id,
-              type: s.type,
-              label: s.label || s.type,
-              config: (s.config || {}) as Record<string, any>,
-              productId: s.productId,
-              nextStepId: s.nextStepId,
-              altNextStepId: s.altNextStepId,
-            }))
+          const loaded = (data.flow.steps || []).map((s: any) => ({
+            id: s.id,
+            type: s.type,
+            label: s.label || s.type,
+            config: (s.config || {}) as Record<string, any>,
+            productId: s.productId,
+            nextStepId: s.nextStepId,
+            altNextStepId: s.altNextStepId,
+            positionX: s.positionX,
+            positionY: s.positionY,
+          }));
+          setSteps(loaded);
+          const isGraph = loaded.some(
+            (s: any) =>
+              Array.isArray(s.config?.outgoingEdges) &&
+              s.config.outgoingEdges.length > 0
           );
+          setGraphMode(isGraph);
         }
       })
       .catch(console.error);
   }, [flowId]);
 
   // Adicionar novo passo (opcionalmente após um índice específico)
-  const addStep = (type: string, afterIndex?: number) => {
+  const addStep = (type: string, afterIndex?: number, position?: { x: number; y: number }) => {
     const typeDef = STEP_TYPES.find((t) => t.type === type);
     const newStep: FlowStep = {
       id: crypto.randomUUID(),
@@ -203,6 +221,8 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
       config: getDefaultConfig(type),
       nextStepId: undefined,
       altNextStepId: undefined,
+      positionX: position?.x ?? null,
+      positionY: position?.y ?? null,
     };
     if (afterIndex !== undefined && afterIndex >= 0) {
       const newSteps = [...steps];
@@ -214,10 +234,105 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
     setSelectedStepId(newStep.id);
   };
 
-  // Remover passo
+  // Remover passo (limpa também arestas penduradas)
   const removeStep = (id: string) => {
-    setSteps(steps.filter((s) => s.id !== id));
+    setSteps(
+      steps
+        .filter((s) => s.id !== id)
+        .map((s) => {
+          const edges = Array.isArray(s.config?.outgoingEdges)
+            ? s.config.outgoingEdges
+            : [];
+          const hasDangling = edges.some((e: any) => e.targetStepId === id);
+          if (!hasDangling) return s;
+          return {
+            ...s,
+            config: {
+              ...s.config,
+              outgoingEdges: edges.map((e: any) =>
+                e.targetStepId === id ? { ...e, targetStepId: null } : e
+              ),
+            },
+          };
+        })
+    );
     if (selectedStepId === id) setSelectedStepId(null);
+  };
+
+  // ===== Handlers do modo grafo =====
+
+  const updateStepPosition = (id: string, x: number, y: number) => {
+    setSteps(
+      steps.map((s) => (s.id === id ? { ...s, positionX: x, positionY: y } : s))
+    );
+  };
+
+  const connectGraphEdge = (fromId: string, port: string, toId: string) => {
+    setSteps(
+      steps.map((s) => {
+        if (s.id !== fromId) return s;
+        const edges = Array.isArray(s.config?.outgoingEdges)
+          ? (s.config.outgoingEdges as any[])
+          : [];
+        // Máximo 1 aresta por porta — substitui a existente
+        const filtered = edges.filter((e: any) => e.port !== port);
+        return {
+          ...s,
+          config: {
+            ...s.config,
+            outgoingEdges: [
+              ...filtered,
+              { id: crypto.randomUUID(), port, targetStepId: toId },
+            ],
+          },
+        };
+      })
+    );
+  };
+
+  const removeGraphEdge = (edgeId: string) => {
+    setSteps(
+      steps.map((s) => {
+        const edges = Array.isArray(s.config?.outgoingEdges)
+          ? (s.config.outgoingEdges as any[])
+          : [];
+        if (!edges.some((e: any) => e.id === edgeId)) return s;
+        return {
+          ...s,
+          config: {
+            ...s.config,
+            outgoingEdges: edges.filter((e: any) => e.id !== edgeId),
+          },
+        };
+      })
+    );
+  };
+
+  // Converte um fluxo legado para o modelo de grafo (arestas + auto-layout)
+  const convertToGraph = () => {
+    const legacySteps = steps.map((s) => ({
+      ...s,
+      order: steps.findIndex((x) => x.id === s.id) + 1,
+    }));
+    const edgeMap = migrateLegacyToGraph(legacySteps as any);
+    const positions = autoLayout(legacySteps as any);
+    setSteps(
+      legacySteps.map((s) => {
+        const edges = edgeMap.get(s.id) || [];
+        const pos = positions.get(s.id);
+        return {
+          ...s,
+          positionX: pos?.x ?? 0,
+          positionY: pos?.y ?? 0,
+          config: {
+            ...s.config,
+            ...(edges.length > 0 ? { outgoingEdges: edges } : {}),
+          },
+        };
+      })
+    );
+    setGraphMode(true);
+    setMessage("Convertido para o canvas! Ajuste as conexões e salve.");
   };
 
   // Atualizar config do passo selecionado
@@ -282,14 +397,24 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
         name: flowName,
         triggerKeyword,
         triggerMode,
-        steps: steps.map((s, i) => ({
-          type: s.type,
-          label: s.label,
-          config: s.config,
-          productId: s.productId,
-          nextStepId: s.nextStepId,
-          altNextStepId: s.altNextStepId,
-        })),
+        steps: steps.map((s) => {
+          const edges = Array.isArray(s.config?.outgoingEdges)
+            ? (s.config.outgoingEdges as any[])
+            : [];
+          const nextEdge = edges.find((e: any) => e.port === "next");
+          const altEdge = edges.find((e: any) => e.port === "alt");
+          return {
+            type: s.type,
+            label: s.label,
+            config: s.config,
+            productId: s.productId,
+            // Dual-write: espelha as portas next/alt nas colunas legadas
+            nextStepId: nextEdge ? nextEdge.targetStepId : s.nextStepId,
+            altNextStepId: altEdge ? altEdge.targetStepId : s.altNextStepId,
+            positionX: s.positionX ?? null,
+            positionY: s.positionY ?? null,
+          };
+        }),
       }),
     });
 
@@ -309,15 +434,26 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
       name: flowName,
       triggerKeyword,
       triggerMode,
-      steps: steps.map((s, i) => ({
-        order: i + 1,
-        type: s.type,
-        label: s.label,
-        config: s.config,
-        productId: s.productId,
-      })),
+      steps: steps.map((s, i) => {
+        const edges = Array.isArray(s.config?.outgoingEdges)
+          ? (s.config.outgoingEdges as any[])
+          : [];
+        const nextEdge = edges.find((e: any) => e.port === "next");
+        const altEdge = edges.find((e: any) => e.port === "alt");
+        return {
+          order: i + 1,
+          type: s.type,
+          label: s.label,
+          config: s.config,
+          productId: s.productId,
+          nextStepId: nextEdge ? nextEdge.targetStepId : s.nextStepId || null,
+          altNextStepId: altEdge ? altEdge.targetStepId : s.altNextStepId || null,
+          positionX: s.positionX ?? null,
+          positionY: s.positionY ?? null,
+        };
+      }),
       exportedAt: new Date().toISOString(),
-      version: "1.0",
+      version: "2.0",
     };
     const blob = new Blob([JSON.stringify(template, null, 2)], {
       type: "application/json",
@@ -342,20 +478,48 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
       reader.onload = (ev) => {
         try {
           const data = JSON.parse(ev.target?.result as string);
+          const isV2 = data.version === "2.0";
           setFlowName(data.name || "Fluxo Importado");
           setTriggerKeyword(data.triggerKeyword || "");
           setTriggerMode(data.triggerMode || "contains");
-          setSteps(
-            (data.steps || []).map((s: any) => ({
-              id: crypto.randomUUID(),
-              type: s.type,
-              label: s.label || s.type,
-              config: s.config || {},
-              productId: s.productId || null,
-              nextStepId: null,
-              altNextStepId: null,
-            }))
+
+          // v2: preserva arestas e posições (remap de ids)
+          const oldToNew: Record<string, string> = {};
+          const rawSteps = (data.steps || []).map((s: any) => {
+            const newId = crypto.randomUUID();
+            if (s.id) oldToNew[s.id] = newId;
+            return { ...s, _newId: newId };
+          });
+          const importedSteps = rawSteps.map((s: any) => ({
+            id: s._newId,
+            type: s.type,
+            label: s.label || s.type,
+            config:
+              isV2 && Array.isArray(s.config?.outgoingEdges)
+                ? {
+                    ...s.config,
+                    outgoingEdges: s.config.outgoingEdges.map((e: any) => ({
+                      ...e,
+                      id: crypto.randomUUID(),
+                      targetStepId: e.targetStepId
+                        ? oldToNew[e.targetStepId] || null
+                        : null,
+                    })),
+                  }
+                : s.config || {},
+            productId: s.productId || null,
+            nextStepId: isV2 && s.nextStepId ? oldToNew[s.nextStepId] || null : null,
+            altNextStepId: isV2 && s.altNextStepId ? oldToNew[s.altNextStepId] || null : null,
+            positionX: isV2 ? s.positionX ?? null : null,
+            positionY: isV2 ? s.positionY ?? null : null,
+          }));
+          setSteps(importedSteps);
+          const hasEdges = importedSteps.some(
+            (s: any) =>
+              Array.isArray(s.config?.outgoingEdges) &&
+              s.config.outgoingEdges.length > 0
           );
+          setGraphMode(isV2 && hasEdges);
           setMessage("Fluxo importado! Revise e salve.");
         } catch {
           setMessage("Erro ao importar. Arquivo inválido.");
@@ -431,6 +595,26 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
               Exportar
             </button>
             <button
+              onClick={() => {
+                if (graphMode) {
+                  setGraphMode(false);
+                } else if (flowIsGraph) {
+                  setGraphMode(true);
+                } else {
+                  convertToGraph();
+                }
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-input hover:bg-secondary transition-colors"
+              title="Alterna entre o canvas de grafo e a lista"
+            >
+              <GitBranch className="w-4 h-4" />
+              {graphMode
+                ? "Modo lista"
+                : flowIsGraph
+                  ? "Modo canvas"
+                  : "Converter p/ canvas"}
+            </button>
+            <button
               onClick={saveFlow}
               disabled={saving}
               className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
@@ -441,8 +625,29 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
           </div>
         </div>
 
+        {/* Aviso de ciclo inseguro (grafo) */}
+        {graphMode && detectUnsafeCycles(steps as any).length > 0 && (
+          <div className="mb-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-700">
+            ⚠️ Ciclo sem pausa detectado — coloque uma caixinha de espera
+            (pergunta/resposta) no caminho de volta
+          </div>
+        )}
+
         {/* Canvas */}
-        <div className="flex-1 bg-card border border-border rounded-xl overflow-y-auto p-6">
+        <div className="flex-1 bg-card border border-border rounded-xl overflow-hidden">
+          {graphMode ? (
+            <FlowCanvas
+              steps={steps}
+              stepTypes={STEP_TYPES}
+              selectedStepId={selectedStepId}
+              onSelectStep={setSelectedStepId}
+              onAddStep={(type, x, y) => addStep(type, undefined, { x, y })}
+              onMoveStep={updateStepPosition}
+              onConnectEdge={connectGraphEdge}
+              onRemoveEdge={removeGraphEdge}
+            />
+          ) : (
+          <div className="h-full overflow-y-auto p-6">
           {/* Trigger node (INÍCIO) */}
           <div className="flex flex-col items-center">
             <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-green-500/10 border-2 border-green-500/30 text-sm font-medium text-green-700">
@@ -632,6 +837,8 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
               </div>
             </div>
           )}
+          </div>
+          )}
         </div>
       </div>
 
@@ -648,8 +855,16 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
               <button
                 key={type.type}
                 onClick={() => addStep(type.type)}
+                draggable={graphMode}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData(
+                    "application/ezflow-type",
+                    type.type
+                  );
+                  e.dataTransfer.effectAllowed = "move";
+                }}
                 className={clsx(
-                  "w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors hover:bg-secondary"
+                  "w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-colors hover:bg-secondary cursor-grab active:cursor-grabbing"
                 )}
               >
                 <div className={clsx("p-1.5 rounded-md", type.colorLight)}>
@@ -675,6 +890,7 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
             <StepConfigPanel
               step={selectedStep}
               allSteps={steps}
+              graphMode={graphMode}
               onUpdateConfig={updateStepConfig}
               onUpdateLabel={updateStepLabel}
               onSetNextStep={(toId) => setNextStep(selectedStep.id, toId)}
@@ -759,6 +975,7 @@ function getDefaultConfig(type: string): Record<string, any> {
 function StepConfigPanel({
   step,
   allSteps,
+  graphMode,
   onUpdateConfig,
   onUpdateLabel,
   onSetNextStep,
@@ -767,6 +984,7 @@ function StepConfigPanel({
 }: {
   step: FlowStep;
   allSteps: FlowStep[];
+  graphMode?: boolean;
   onUpdateConfig: (config: Record<string, any>) => void;
   onUpdateLabel: (label: string) => void;
   onSetNextStep: (toId: string | undefined) => void;
@@ -795,7 +1013,7 @@ function StepConfigPanel({
       </div>
 
       {/* Rotas do balãozinho CONDITION */}
-      {step.type === "CONDITION" && (
+      {step.type === "CONDITION" && !graphMode && (
         <>
         <div>
           <label className="block text-xs font-medium mb-1">
