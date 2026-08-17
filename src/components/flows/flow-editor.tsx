@@ -404,6 +404,10 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
           const nextEdge = edges.find((e: any) => e.port === "next");
           const altEdge = edges.find((e: any) => e.port === "alt");
           return {
+            // id é OBRIGATÓRIO: o PUT update-in-place usa para distinguir
+            // passos existentes de novos (sem id, tudo vira "novo" e os
+            // existentes são deletados, quebrando as arestas)
+            id: s.id,
             type: s.type,
             label: s.label,
             config: s.config,
