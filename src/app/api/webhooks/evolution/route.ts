@@ -6,9 +6,16 @@ import { FlowEngine } from "@/lib/flow-engine";
 const WA_URL = process.env.EZFLOW_WA_URL || "http://evolution:8080";
 const WA_KEY = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
 
-// Anti-duplicata: IDs processados nos últimos 10s
-const recentIds = new Set<string>();
-setInterval(() => recentIds.clear(), 10000);
+// Anti-duplicata: IDs processados nos últimos 60s
+// (a Evolution pode reentregar a mesma mensagem quando a resposta demora —
+// o processamento do fluxo leva mais que 10s, então a janela precisa ser maior)
+const recentIds = new Map<string, number>();
+setInterval(() => {
+  const cutoff = Date.now() - 60000;
+  for (const [id, ts] of recentIds) {
+    if (ts < cutoff) recentIds.delete(id);
+  }
+}, 10000);
 
 // Lock por telefone: evita race condition que cria sessões duplicadas
 const processingLock = new Map<string, Promise<void>>();
@@ -27,7 +34,7 @@ export async function POST(req: NextRequest) {
     if (recentIds.has(messageId)) {
       return NextResponse.json({ success: true, ignored: true, reason: "duplicate" });
     }
-    recentIds.add(messageId);
+    recentIds.set(messageId, Date.now());
 
     console.log(`[WA-IN] ${phone}: "${message}" (${pushName || "?"})`);
 
