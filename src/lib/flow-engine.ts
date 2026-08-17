@@ -234,6 +234,11 @@ async function generateTrustPix(
 
   // Link de pagamento (Checkout Pro) no módulo confiança — mesmo critério
   // do fluxo normal: paymentMode "link" ou "both" (só Mercado Pago)
+  const trustLinkRef =
+    !isInfinitePay &&
+    (config.paymentMode === "link" || config.paymentMode === "both")
+      ? `ezlink-${randomUUID()}`
+      : "";
   if (!isInfinitePay && (config.paymentMode === "link" || config.paymentMode === "both")) {
     try {
       const { MercadoPagoClient } = await import("./mercadopago");
@@ -242,6 +247,7 @@ async function generateTrustPix(
         amount,
         description,
         expirationMinutes: config.expirationMinutes || 30,
+        externalReference: trustLinkRef,
       });
       if (linkUrl) {
         await evolutionClient.sendText({
@@ -269,7 +275,7 @@ async function generateTrustPix(
       pixCopyPaste: pix.pixCopyPaste,
       pixQrCode: pix.pixQrCodeBase64,
       pixExpiresAt: isInfinitePay ? null : new Date(pix.pixExpiration),
-      metadata: { trustMode: true, originalSale: true, pixStepId: (pixStep as any)?.id || null, gateway: isInfinitePay ? "infinitepay" : "mercadopago" },
+      metadata: { trustMode: true, originalSale: true, pixStepId: (pixStep as any)?.id || null, gateway: isInfinitePay ? "infinitepay" : "mercadopago", ...(trustLinkRef ? { linkRef: trustLinkRef } : {}) },
     },
   });
 
@@ -1195,6 +1201,10 @@ export class FlowEngine {
 
           // Checkout Pro (Mercado Pago) — criado quando o link faz parte do modo
           let checkoutUrl = "";
+          const linkRef =
+            !isInfinitePay && (paymentMode === "link" || paymentMode === "both")
+              ? `ezlink-${randomUUID()}`
+              : "";
           if (!isInfinitePay && (paymentMode === "link" || paymentMode === "both")) {
             try {
               const mpCheckout = new MercadoPagoClient(token);
@@ -1203,6 +1213,7 @@ export class FlowEngine {
                   amount: price,
                   description,
                   expirationMinutes: config.expirationMinutes || 30,
+                  externalReference: linkRef,
                 })) || "";
             } catch (err: any) {
               console.error("[PIX-LINK] failed to create checkout link:", err.message);
@@ -1306,6 +1317,7 @@ export class FlowEngine {
                   ? resolveOutgoing(allSteps as any[], step as any, PORT_NEXT)
                   : step.nextStepId,
                 gateway: isInfinitePay ? "infinitepay" : "mercadopago",
+                ...(linkRef ? { linkRef } : {}),
               },
             },
           });
@@ -1579,11 +1591,41 @@ export class FlowEngine {
     verify?: { transactionNsu?: string; slug?: string }
   ): Promise<{ success: boolean; delivered: boolean }> {
     try {
-      // Buscar venda pelo externalId
-      const sale = await prisma.sale.findFirst({
+      // Buscar venda pelo externalId (PIX direto) — ou pelo linkRef do
+      // Checkout Pro (o webhook traz o id do pagamento do LINK, que é
+      // diferente do id do PIX; a external_reference casa os dois)
+      let sale = await prisma.sale.findFirst({
         where: { externalId: paymentId, tenantId },
         include: { session: { include: { flow: { include: { steps: true } } } } },
       });
+
+      if (!sale) {
+        try {
+          const tenantTmp = await prisma.tenant.findUnique({
+            where: { id: tenantId },
+          });
+          if (tenantTmp?.mercadopagoToken) {
+            const mpTmp = new MercadoPagoClient(tenantTmp.mercadopagoToken);
+            const payTmp = await mpTmp.getPaymentStatus(paymentId);
+            if (payTmp.externalReference) {
+              sale = await prisma.sale.findFirst({
+                where: {
+                  tenantId,
+                  metadata: { path: ["linkRef"], equals: payTmp.externalReference },
+                },
+                include: {
+                  session: { include: { flow: { include: { steps: true } } } },
+                },
+              });
+              if (sale) {
+                console.log(`[DELIVER] matched checkout-link payment via linkRef ${payTmp.externalReference}`);
+              }
+            }
+          }
+        } catch (err: any) {
+          console.log(`[DELIVER] link payment lookup failed: ${err.message}`);
+        }
+      }
 
       if (!sale) {
         console.log(`Sale not found for payment ${paymentId}`);

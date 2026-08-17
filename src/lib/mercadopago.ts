@@ -125,6 +125,7 @@ export class MercadoPagoClient {
       statusDetail: data.status_detail || "",
       amount: data.transaction_amount || 0,
       dateApproved: data.date_approved || null,
+      externalReference: data.external_reference || "",
     };
   }
 
@@ -135,6 +136,7 @@ export class MercadoPagoClient {
     amount: number;
     description: string;
     expirationMinutes?: number;
+    externalReference?: string;
   }): Promise<string> {
     const expirationDate = new Date(
       Date.now() + (params.expirationMinutes || 30) * 60 * 1000
@@ -154,6 +156,11 @@ export class MercadoPagoClient {
           { id: "ticket" },
         ],
       },
+      // external_reference permite casar o pagamento do link com a venda
+      // (o webhook traz o id do pagamento do checkout, diferente do PIX)
+      ...(params.externalReference
+        ? { external_reference: params.externalReference }
+        : {}),
       expires: true,
       expiration_date_to: expirationDate.toISOString(),
     };

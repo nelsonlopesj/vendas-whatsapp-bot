@@ -38,7 +38,21 @@ export async function POST(req: NextRequest) {
     });
 
     if (!sale) {
-      console.log(`Sale not found for payment ${paymentId}`);
+      // Pode ser o pagamento do Checkout Pro (link): o id não bate com o PIX,
+      // mas o handlePixPayment casa pela external_reference (linkRef)
+      console.log(`Sale not found by externalId ${paymentId} — trying linkRef match`);
+      const tenants = await prisma.tenant.findMany({
+        where: { isActive: true },
+      });
+      for (const tenant of tenants) {
+        const result = await FlowEngine.handlePixPayment(paymentId, tenant.id);
+        if (result.success) {
+          return NextResponse.json({
+            success: result.success,
+            delivered: result.delivered,
+          });
+        }
+      }
       return NextResponse.json({ success: false, error: "Venda não encontrada" });
     }
 
