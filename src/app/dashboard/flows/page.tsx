@@ -28,6 +28,11 @@ interface Flow {
 export default function FlowsPage() {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState<string | null>(null);
+  const [importMsg, setImportMsg] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
 
   const fetchFlows = useCallback(async () => {
     const res = await fetch("/api/flows");
@@ -63,8 +68,16 @@ export default function FlowsPage() {
       const file = e.target.files?.[0];
       if (!file) return;
       const text = await file.text();
+      let data: any;
       try {
-        const data = JSON.parse(text);
+        data = JSON.parse(text);
+      } catch {
+        setImportMsg({ ok: false, text: "Arquivo inválido — não é um JSON de fluxo." });
+        return;
+      }
+      setImporting("Arquivo");
+      setImportMsg(null);
+      try {
         const res = await fetch("/api/flows", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -84,11 +97,17 @@ export default function FlowsPage() {
             })),
           }),
         });
+        const body = await res.json().catch(() => ({}));
         if (res.ok) {
-          fetchFlows();
+          setImportMsg({ ok: true, text: `✅ "${data.name || "Fluxo"}" importado com sucesso!` });
+          await fetchFlows();
+        } else {
+          setImportMsg({ ok: false, text: `❌ Falha ao importar: ${body.error || res.status}` });
         }
-      } catch {
-        alert("Arquivo inválido.");
+      } catch (err: any) {
+        setImportMsg({ ok: false, text: `❌ Falha ao importar: ${err.message}` });
+      } finally {
+        setImporting(null);
       }
     };
     input.click();
@@ -129,6 +148,24 @@ export default function FlowsPage() {
           </Link>
         </div>
       </div>
+
+      {importing && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 text-sm">
+          <span className="animate-spin w-4 h-4 border-2 border-primary border-t-transparent rounded-full" />
+          Importando &quot;{importing}&quot;...
+        </div>
+      )}
+      {importMsg && (
+        <div
+          className={`p-3 rounded-lg text-sm ${
+            importMsg.ok
+              ? "bg-green-500/10 text-green-700"
+              : "bg-destructive/10 text-destructive"
+          }`}
+        >
+          {importMsg.text}
+        </div>
+      )}
 
       {flows.length === 0 ? (
         <div className="bg-card border border-border rounded-xl p-12 text-center">
@@ -237,14 +274,34 @@ export default function FlowsPage() {
             <button
               key={tpl.file}
               onClick={async () => {
-                const res = await fetch(`/templates/${tpl.file}`);
-                const data = await res.json();
-                await fetch("/api/flows", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify(data),
-                });
-                fetchFlows();
+                setImporting(tpl.name);
+                setImportMsg(null);
+                try {
+                  const res = await fetch(`/templates/${tpl.file}`);
+                  const data = await res.json();
+                  const created = await fetch("/api/flows", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(data),
+                  });
+                  const body = await created.json().catch(() => ({}));
+                  if (created.ok) {
+                    setImportMsg({
+                      ok: true,
+                      text: `✅ Template "${tpl.name}" importado com sucesso!`,
+                    });
+                    await fetchFlows();
+                  } else {
+                    setImportMsg({
+                      ok: false,
+                      text: `❌ Falha ao importar: ${body.error || created.status}`,
+                    });
+                  }
+                } catch (err: any) {
+                  setImportMsg({ ok: false, text: `❌ Falha ao importar: ${err.message}` });
+                } finally {
+                  setImporting(null);
+                }
               }}
               className="flex items-start gap-3 p-4 rounded-xl border border-border hover:border-primary/30 hover:bg-primary/5 transition-all text-left"
             >
