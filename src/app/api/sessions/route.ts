@@ -91,7 +91,14 @@ export async function POST(req: NextRequest) {
 
   if (action === "retry_delivery" && sessionId) {
     const { FlowEngine } = await import("@/lib/flow-engine");
-    const sale = await prisma.sale.findFirst({ where: { sessionId, status: "PAID", deliveryStatus: { not: "sent" } } });
+    const sale = await prisma.sale.findFirst({
+      where: {
+        sessionId,
+        status: "PAID",
+        // NULL também casa (SQL: deliveryStatus <> 'sent' exclui NULL)
+        OR: [{ deliveryStatus: null }, { deliveryStatus: { not: "sent" } }],
+      },
+    });
     if (!sale?.externalId) return NextResponse.json({ error: "No pending PAID sale found" }, { status: 404 });
     await prisma.sale.updateMany({ where: { id: sale.id }, data: { deliveryStatus: null } });
     // skipVerification: o admin já confirmou o pagamento manualmente
