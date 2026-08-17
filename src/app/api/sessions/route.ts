@@ -94,7 +94,8 @@ export async function POST(req: NextRequest) {
     const sale = await prisma.sale.findFirst({ where: { sessionId, status: "PAID", deliveryStatus: { not: "sent" } } });
     if (!sale?.externalId) return NextResponse.json({ error: "No pending PAID sale found" }, { status: 404 });
     await prisma.sale.updateMany({ where: { id: sale.id }, data: { deliveryStatus: null } });
-    const result = await FlowEngine.handlePixPayment(sale.externalId, sale.tenantId);
+    // skipVerification: o admin já confirmou o pagamento manualmente
+    const result = await FlowEngine.handlePixPayment(sale.externalId, sale.tenantId, undefined, true);
     return NextResponse.json({ success: result.delivered, ...result });
   }
 

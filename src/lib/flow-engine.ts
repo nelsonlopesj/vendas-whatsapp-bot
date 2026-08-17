@@ -1588,7 +1588,8 @@ export class FlowEngine {
   static async handlePixPayment(
     paymentId: string,
     tenantId: string,
-    verify?: { transactionNsu?: string; slug?: string }
+    verify?: { transactionNsu?: string; slug?: string },
+    skipVerification = false
   ): Promise<{ success: boolean; delivered: boolean }> {
     try {
       // Buscar venda pelo externalId (PIX direto) — ou pelo linkRef do
@@ -1659,7 +1660,12 @@ export class FlowEngine {
       let gatewayStatus = "";
       let gatewayDetail = "";
 
-      if (gateway === "infinitepay") {
+      // Retry manual (admin): confia no status PAID da venda, sem consultar
+      // o gateway — usado quando o cliente pagou por outro meio (ex: link)
+      if (skipVerification) {
+        paid = true;
+        gatewayStatus = "manual";
+      } else if (gateway === "infinitepay") {
         const { InfinitePayClient } = await import("./infinitepay");
         const ip = new InfinitePayClient(tenant.mercadopagoToken);
         const check = await ip.checkPayment({
