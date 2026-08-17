@@ -132,9 +132,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ flow: updated }, { status: 201 });
   } catch (error: any) {
-    console.error("Flow create error:", error);
+    console.error("Flow create error:", error.message || error);
     return NextResponse.json(
-      { error: "Erro ao criar fluxo" },
+      { error: "Erro ao criar fluxo", detail: error.message || String(error) },
       { status: 500 }
     );
   }
