@@ -631,10 +631,30 @@ export class FlowEngine {
         }
       }
 
-      // Comportamento normal: fecha sessão pra permitir nova keyword match
-      console.log(`[FLOW-CONT] GENERATE_PIX waiting_pix — closing session to allow keyword match`);
-      await prisma.flowSession.update({ where: { id: session.id }, data: { status: "completed", completedAt: new Date() } });
-      return { action: "continue_session", session: { ...session, status: "completed" as any } };
+      // Mensagem avulsa enquanto espera o pagamento: NÃO pode fechar a sessão
+      // (a entrega pós-pagamento depende dela). Só fecha se o cliente pedir
+      // reinício explícito enviando a keyword do fluxo.
+      const flowKeyword = session.flow?.triggerKeyword || "";
+      const flowMode = session.flow?.triggerMode || "contains";
+      if (flowKeyword && matchKeyword(message, flowKeyword, flowMode)) {
+        console.log(`[FLOW-CONT] GENERATE_PIX waiting_pix — keyword restart, closing session`);
+        await prisma.flowSession.update({ where: { id: session.id }, data: { status: "completed", completedAt: new Date() } });
+        return { action: "continue_session", session: { ...session, status: "completed" as any } };
+      }
+      if (evolutionClient) {
+        try {
+          await evolutionClient.sendText({
+            number: session.customerPhone,
+            text: "💰 Estou aguardando a confirmação do seu pagamento! Assim que o PIX for confirmado, envio seu material na hora. 😊",
+          });
+        } catch {}
+      }
+      await prisma.flowSession.update({
+        where: { id: session.id },
+        data: { lastActivityAt: new Date(), variables: allVars },
+      });
+      console.log(`[FLOW-CONT] waiting_pix kept alive for session ${session.id?.slice(-8)}`);
+      return { action: "continue_session", session: { ...session, status: "waiting_pix", variables: allVars } };
     }
 
     if (
@@ -1621,7 +1641,10 @@ export class FlowEngine {
           return { success: true, delivered: true };
         }
         console.log(`[DELIVER] session=${session?.id} status=${session?.status}`);
-        if (session && session.status === "waiting_pix") {
+        // "completed" também pode entregar: sessões fechadas por mensagens
+        // avulsas durante a espera do PIX (comportamento legado) não podem
+        // perder a entrega — o dedupe por deliveryStatus acima evita duplicar
+        if (session && (session.status === "waiting_pix" || session.status === "completed")) {
           // Marca como "sending" pra evitar race condition com polling
           await prisma.sale.update({ where: { id: sale.id }, data: { deliveryStatus: "sending" } });
 
@@ -1788,7 +1811,7 @@ export class FlowEngine {
       console.log(`[RESUME] session not found: ${sessionId}`);
       return;
     }
-    if (!["active", "waiting_pix", "waiting_delay"].includes(session.status)) {
+    if (!["active", "waiting_pix", "waiting_delay", "completed"].includes(session.status)) {
       console.log(`[RESUME] session status=${session.status}, skipping`);
       return;
     }
