@@ -72,9 +72,20 @@ export async function PUT(
       },
     });
 
+    // Só mexe nos steps quando o payload os inclui —
+    // o toggle de isActive na listagem envia apenas { isActive } e
+    // NUNCA pode apagar os passos existentes.
+    if (!Array.isArray(steps)) {
+      const unchanged = await prisma.flow.findUnique({
+        where: { id },
+        include: { steps: { orderBy: { order: "asc" } } },
+      });
+      return NextResponse.json({ flow: unchanged });
+    }
+
     // Update-in-place: preserva os IDs dos steps existentes (sessões em voo
     // mantêm currentStepId válido); cria os novos; deleta os removidos.
-    const incoming = (steps || []) as any[];
+    const incoming = steps as any[];
     const existingSteps = await prisma.flowStep.findMany({
       where: { flowId: id },
     });
