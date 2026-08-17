@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { ensureEvolutionWebhook } from "@/lib/evolution-webhook";
 
 const WA_URL = process.env.EZFLOW_WA_URL || "http://evolution:8080";
 const WA_KEY = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
@@ -40,6 +41,8 @@ export async function GET() {
         const statusData = await statusRes.json();
         const state = statusData?.instance?.state;
         if (state === "open") {
+          // Conectado: re-garante o webhook (reconexões podem tê-lo derrubado)
+          ensureEvolutionWebhook().catch(() => {});
           return NextResponse.json({ connected: true, state: "open", qrcode: null });
         }
         // Se tá travado em "connecting", deleta pra recriar limpo
@@ -62,16 +65,8 @@ export async function GET() {
         },
         5000
       );
-      // Configurar webhook automaticamente
-      await fetchWithTimeout(
-        `${baseUrl}/webhook/set/${instance}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: WA_KEY },
-          body: JSON.stringify({ webhook: { enabled: true, url: `http://portal:3000/api/webhooks/evolution`, events: ["MESSAGES_UPSERT"] } }),
-        },
-        5000
-      );
+      // Configurar webhook automaticamente (idempotente)
+      await ensureEvolutionWebhook();
     } catch {}
 
     // 3. Buscar QR Code

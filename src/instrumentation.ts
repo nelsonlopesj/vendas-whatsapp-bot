@@ -6,6 +6,14 @@ export async function register() {
   const { flowTimeoutQueue } = await import("./lib/queue");
   console.log("[INSTR] BullMQ workers initialized via instrumentation");
 
+  // Auto-cura do webhook da Evolution: no boot e a cada 5 minutos
+  // (reconexões de WhatsApp podem derrubar a config de webhook)
+  const { ensureEvolutionWebhook } = await import("./lib/evolution-webhook");
+  ensureEvolutionWebhook().catch(() => {});
+  setInterval(() => {
+    ensureEvolutionWebhook().catch(() => {});
+  }, 5 * 60 * 1000);
+
   // Recuperar timeouts pendentes (perdidos após restart/deploy)
   try {
     const activeSessions = await prisma.flowSession.findMany({
