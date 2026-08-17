@@ -100,9 +100,20 @@ export async function POST(req: NextRequest) {
       },
     });
     if (!sale?.externalId) return NextResponse.json({ error: "No pending PAID sale found" }, { status: 404 });
-    await prisma.sale.updateMany({ where: { id: sale.id }, data: { deliveryStatus: null } });
-    // skipVerification: o admin já confirmou o pagamento manualmente
-    const result = await FlowEngine.handlePixPayment(sale.externalId, sale.tenantId, undefined, true);
+
+    // Reivindica a entrega atomicamente: só 1 retry simultâneo por venda
+    // (evita o loop de entregas quando o comando é disparado várias vezes)
+    const claim = await prisma.sale.updateMany({
+      where: { id: sale.id, deliveryStatus: { not: "sending" } },
+      data: { deliveryStatus: "sending" },
+    });
+    if (claim.count === 0) {
+      return NextResponse.json({ error: "Retry já em andamento" }, { status: 409 });
+    }
+
+    // skipVerification + skipDeliveryDedupe: o admin confirmou o pagamento e
+    // a reivindicação acima já garante a entrega única
+    const result = await FlowEngine.handlePixPayment(sale.externalId, sale.tenantId, undefined, true, true);
     return NextResponse.json({ success: result.delivered, ...result });
   }
 

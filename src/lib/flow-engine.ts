@@ -1589,7 +1589,8 @@ export class FlowEngine {
     paymentId: string,
     tenantId: string,
     verify?: { transactionNsu?: string; slug?: string },
-    skipVerification = false
+    skipVerification = false,
+    skipDeliveryDedupe = false
   ): Promise<{ success: boolean; delivered: boolean }> {
     try {
       // Buscar venda pelo externalId (PIX direto) — ou pelo linkRef do
@@ -1633,8 +1634,12 @@ export class FlowEngine {
         return { success: false, delivered: false };
       }
 
-      // Evitar entrega duplicada
-      if (sale.deliveryStatus === "sent" || sale.deliveryStatus === "sending") {
+      // Evitar entrega duplicada (retry manual já "reivindicou" a entrega
+      // com deliveryStatus=sending — skipDeliveryDedupe pula este guard)
+      if (
+        !skipDeliveryDedupe &&
+        (sale.deliveryStatus === "sent" || sale.deliveryStatus === "sending")
+      ) {
         console.log(`[DELIVER] Sale ${sale.id} already ${sale.deliveryStatus}, skipping`);
         return { success: true, delivered: true };
       }
@@ -1910,6 +1915,23 @@ export class FlowEngine {
       baseUrl: waUrl,
       apikey: waKey,
       instance: "default",
+    });
+
+    // Orçamento de retomadas POR SESSÃO: ciclos entre passes (via delays
+    // encadeados) não podem rodar para sempre — 20 retomadas é o teto
+    const counters = (session.loopCounters || {}) as Record<string, number>;
+    const resumes = (counters["_resumeCount"] || 0) + 1;
+    if (resumes > 20) {
+      console.error(`[FLOW-GUARD] session ${sessionId?.slice(-8)} exceeded resume budget — failing`);
+      await prisma.flowSession.update({
+        where: { id: sessionId },
+        data: { status: "failed", failureReason: "cycle_or_budget" },
+      });
+      return;
+    }
+    await prisma.flowSession.update({
+      where: { id: sessionId },
+      data: { loopCounters: { ...counters, _resumeCount: resumes } },
     });
 
     await FlowEngine.runChainFromStep(session, entryStepId, evolutionClient);
