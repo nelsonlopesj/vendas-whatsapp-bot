@@ -102,6 +102,7 @@ export class MercadoPagoClient {
     statusDetail: string;
     amount: number;
     dateApproved: string | null;
+    externalReference: string;
   }> {
     const res = await fetch(
       `https://api.mercadopago.com/v1/payments/${paymentId}`,
