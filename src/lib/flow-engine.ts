@@ -232,6 +232,28 @@ async function generateTrustPix(
   await evolutionClient.sendText({ number: phone, text: trustMsg });
   await evolutionClient.sendText({ number: phone, text: pix.pixCopyPaste });
 
+  // Link de pagamento (Checkout Pro) no módulo confiança — mesmo critério
+  // do fluxo normal: paymentMode "link" ou "both" (só Mercado Pago)
+  if (!isInfinitePay && (config.paymentMode === "link" || config.paymentMode === "both")) {
+    try {
+      const { MercadoPagoClient } = await import("./mercadopago");
+      const mpLink = new MercadoPagoClient(token);
+      const linkUrl = await mpLink.createCheckoutLink({
+        amount,
+        description,
+        expirationMinutes: config.expirationMinutes || 30,
+      });
+      if (linkUrl) {
+        await evolutionClient.sendText({
+          number: phone,
+          text: `💻 *Ou pague pelo link:*\n${linkUrl}`,
+        });
+      }
+    } catch (err: any) {
+      console.error("[TRUST-LINK] failed:", err.message);
+    }
+  }
+
   // Registrar venda com valor customizado
   await prisma.sale.create({
     data: {
@@ -590,6 +612,17 @@ export class FlowEngine {
 
       // Módulo Confiança: se keyword configurada e mensagem matcha
       if (pixConfig.trustKeyword && matchKeyword(message, pixConfig.trustKeyword, "contains")) {
+        // Idempotência: se o material já foi liberado (modo confiança ativo),
+        // NÃO repete a entrega — apenas re-pergunta o valor
+        if (allVars["_trustMode"] === "asking_amount") {
+          if (evolutionClient) {
+            const askAgain = pixConfig.trustAskMessage || `Qual valor gostaria de contribuir? (R$${pixConfig.trustMinAmount || 10}-R$${pixConfig.trustMaxAmount || 20})`;
+            await evolutionClient.sendText({ number: session.customerPhone, text: askAgain });
+          }
+          console.log(`[TRUST] re-ask (already delivered) for session ${session.id?.slice(-8)}`);
+          return { action: "continue_session", session: { ...session, status: "waiting_pix", variables: allVars } };
+        }
+
         // Entrega o produto imediatamente
         const welcomeMsg = pixConfig.trustWelcomeMessage || `🎁 Quero que você conheça meu trabalho. Vou liberar o material agora. Se ajudar, contribua. Você decide. ❤️`;
         allVars["_trustMode"] = "asking_amount";
