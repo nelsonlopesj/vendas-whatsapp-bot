@@ -953,9 +953,11 @@ function getDefaultConfig(type: string): Record<string, any> {
         variable: "resposta",
         operator: "contains_any",
         routes: [
-          { values: ["sim", "yes"], goToType: "next" },
-          { values: ["não", "no"], goToType: "alt" },
-          { values: ["*"], goToType: "prev", message: "" },
+          // ids estáveis: o modo grafo conecta arestas em `route:<id>` —
+          // editar valores/mensagens nunca pode trocar o id da rota
+          { id: "pos", name: "Positivas", values: ["sim", "yes"], goToType: "next" },
+          { id: "neg", name: "Negativas", values: ["não", "no"], goToType: "alt" },
+          { id: "duv", name: "Dúvidas", values: ["*"], goToType: "prev", message: "" },
         ],
       };
     case "LOOP":
@@ -1598,7 +1600,8 @@ function StepConfigPanel({
                     .map((s: string) => s.trim().toLowerCase());
                   onUpdateConfig({
                     routes: [
-                      { values, goToType: "next" },
+                      // preserva id/nome da rota (arestas dependem do id)
+                      { ...(config.routes?.[0] || { goToType: "next" }), values },
                       config.routes?.[1] || { values: [], goToType: "alt" },
                       config.routes?.[2] || {
                         values: ["*"],
@@ -1626,7 +1629,8 @@ function StepConfigPanel({
                   onUpdateConfig({
                     routes: [
                       config.routes?.[0] || { values: [], goToType: "next" },
-                      { values, goToType: "alt" },
+                      // preserva id/nome da rota (arestas dependem do id)
+                      { ...(config.routes?.[1] || { goToType: "alt" }), values },
                       config.routes?.[2] || {
                         values: ["*"],
                         goToType: "prev",
@@ -1650,9 +1654,10 @@ function StepConfigPanel({
                     routes: [
                       config.routes?.[0] || { values: [], goToType: "next" },
                       config.routes?.[1] || { values: [], goToType: "alt" },
+                      // preserva id/nome da rota (arestas dependem do id)
                       {
+                        ...(config.routes?.[2] || { goToType: "prev" }),
                         values: ["*"],
-                        goToType: "prev",
                         message: e.target.value,
                       },
                     ],

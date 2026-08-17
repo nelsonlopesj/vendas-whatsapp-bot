@@ -425,14 +425,24 @@ export class FlowEngine {
       }
 
       // GENERATE_PIX: executa e depois pausa
-      const result = await FlowEngine.executeStep(
-        currentStep as FlowStepData,
-        { ...session, variables: allVars },
-        phone,
-        tenantId,
-        evolutionClient,
-        flow.steps as FlowStepData[]
-      );
+      let result: any;
+      try {
+        result = await FlowEngine.executeStep(
+          currentStep as FlowStepData,
+          { ...session, variables: allVars },
+          phone,
+          tenantId,
+          evolutionClient,
+          flow.steps as FlowStepData[]
+        );
+      } catch (err: any) {
+        console.error(`[FLOW-ERR] step ${currentStep.id} (${currentStep.type}) failed at start:`, err.message);
+        try {
+          await evolutionClient.sendText({ number: phone, text: "Ops! Tive um problema nessa etapa. Tente novamente em instantes. 🙏" });
+        } catch {}
+        await prisma.flowSession.update({ where: { id: session.id }, data: { status: "failed", failureReason: "step_error", variables: allVars } });
+        return { action: "new_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, customerPhone: session.customerPhone, customerName: session.customerName, currentStepId: currentStep.id, status: "failed", variables: allVars, loopCounters, currentPixId: null } };
+      }
       allVars = { ...allVars, ...result.variables };
       pixId = result.pixId || pixId;
       lastStatus = result.status;
@@ -643,7 +653,11 @@ export class FlowEngine {
         // Palavras de desinteresse ("não", "desisto"...): desviam para a rota de recusa
         const altKeywords = config.altKeywords || [];
 
-        if (expected.length > 0 && matchResponse(message, expected)) {
+        if (graph && expected.length === 0 && altKeywords.length === 0) {
+          // WAIT_RESPONSE sem listas no grafo = espera QUALQUER resposta:
+          // avança direto pela porta next
+          nextStepId = resolveOutgoing(steps as any[], currentStep as any, PORT_NEXT);
+        } else if (expected.length > 0 && matchResponse(message, expected)) {
           nextStepId = graph
             ? resolveOutgoing(steps as any[], currentStep as any, PORT_NEXT)
             : currentStep.nextStepId || steps.find((s: FlowStepData) => s.order === currentStep.order + 1)?.id || null;
@@ -869,8 +883,27 @@ export class FlowEngine {
       }
 
       // GENERATE_PIX e outros: executa normalmente (com allVars mesclado)
-      const mergedSession = { ...session, variables: allVars };
-      const result = await FlowEngine.executeStep(cs, mergedSession, session.customerPhone, session.tenantId, evolutionClient, steps);
+      // Erros de configuração do usuário (produto sem preço, PIX sem token...)
+      // não podem derrubar o motor: avisa o cliente e tenta a saída alternativa
+      let result: any;
+      try {
+        const mergedSession = { ...session, variables: allVars };
+        result = await FlowEngine.executeStep(cs, mergedSession, session.customerPhone, session.tenantId, evolutionClient, steps);
+      } catch (err: any) {
+        console.error(`[FLOW-ERR] step ${cs.id} (${cs.type}) failed:`, err.message);
+        try {
+          await evolutionClient.sendText({ number: session.customerPhone, text: "Ops! Tive um problema nessa etapa. Tente novamente em instantes. 🙏" });
+        } catch {}
+        const altTarget: string | null = graph
+          ? resolveOutgoing(steps as any[], cs as any, PORT_ALT)
+          : cs?.altNextStepId || null;
+        if (altTarget) {
+          cs = steps.find((s: FlowStepData) => s.id === altTarget) || undefined;
+          continue;
+        }
+        await prisma.flowSession.update({ where: { id: session.id }, data: { status: "failed", failureReason: "step_error", variables: allVars, loopCounters } });
+        return { action: "continue_session", session: { id: session.id, flowId: session.flowId, tenantId: session.tenantId, currentStepId: cs.id, customerPhone: session.customerPhone, customerName: session.customerName || undefined, status: "failed", variables: allVars, loopCounters } };
+      }
       allVars = { ...allVars, ...result.variables };
 
       // Grafo: o próximo passo vem da aresta da porta "next"
@@ -904,9 +937,12 @@ export class FlowEngine {
       cs = steps.find((s: FlowStepData) => s.id === result.nextStepId) || undefined;
     }
 
-    // Atualizar sessão
+    // Atualizar sessão (alvo pendurado = encerra para não ficar preso)
     if (cs?.id) {
       await prisma.flowSession.update({ where: { id: session.id }, data: { currentStepId: cs.id, status: "active", variables: allVars, loopCounters } });
+    } else {
+      console.log(`[FLOW-END] dangling target for session ${session.id?.slice(-8)} — completing`);
+      await prisma.flowSession.update({ where: { id: session.id }, data: { status: "completed", completedAt: new Date(), variables: allVars, loopCounters } });
     }
 
     return { action: "continue_session" };
@@ -1734,7 +1770,16 @@ export class FlowEngine {
     sessionId: string,
     entryStepId: string | null
   ): Promise<void> {
-    if (!entryStepId) return;
+    if (!entryStepId) {
+      // DELAY sem próximo passo (aresta pendurada/removida): encerra a
+      // sessão em vez de deixá-la presa em waiting_delay
+      console.log(`[RESUME] no entry step for session ${sessionId?.slice(-8)} — completing`);
+      await prisma.flowSession.update({
+        where: { id: sessionId },
+        data: { status: "completed", completedAt: new Date() },
+      }).catch(() => {});
+      return;
+    }
     const session = await prisma.flowSession.findUnique({
       where: { id: sessionId },
       include: { flow: { include: { steps: true } }, tenant: true },
@@ -1830,14 +1875,34 @@ export class FlowEngine {
         return;
       }
 
-      const result = await FlowEngine.executeStep(
-        cs,
-        { ...session, variables: allVars },
-        session.customerPhone,
-        session.tenantId,
-        evolutionClient,
-        steps
-      );
+      let result: any;
+      try {
+        result = await FlowEngine.executeStep(
+          cs,
+          { ...session, variables: allVars },
+          session.customerPhone,
+          session.tenantId,
+          evolutionClient,
+          steps
+        );
+      } catch (err: any) {
+        console.error(`[FLOW-ERR] step ${cs.id} (${cs.type}) failed on resume:`, err.message);
+        try {
+          await evolutionClient.sendText({ number: session.customerPhone, text: "Ops! Tive um problema nessa etapa. Tente novamente em instantes. 🙏" });
+        } catch {}
+        const altTarget: string | null = graph
+          ? resolveOutgoing(steps as any[], cs as any, PORT_ALT)
+          : cs?.altNextStepId || null;
+        if (altTarget) {
+          cs = steps.find((s: FlowStepData) => s.id === altTarget) || undefined;
+          continue;
+        }
+        await prisma.flowSession.update({
+          where: { id: session.id },
+          data: { status: "failed", failureReason: "step_error", variables: allVars, loopCounters },
+        });
+        return;
+      }
       allVars = { ...allVars, ...result.variables };
 
       // Grafo: próximo passo pela aresta (LOOP é exceção — porta back)
