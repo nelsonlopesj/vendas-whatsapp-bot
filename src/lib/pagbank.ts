@@ -14,7 +14,11 @@
  * Requisito da conta: pelo menos uma chave PIX ativa.
  */
 
-const BASE_URL = "https://api.pagseguro.com";
+// Sandbox para validação: definir PAGBANK_SANDBOX=1 no ambiente do portal
+const BASE_URL =
+  process.env.PAGBANK_SANDBOX === "1"
+    ? "https://sandbox.api.pagseguro.com"
+    : "https://api.pagseguro.com";
 
 export class PagBankClient {
   private token: string;
