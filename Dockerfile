@@ -16,4 +16,5 @@ ENV HOSTNAME=0.0.0.0
 EXPOSE 3000
 # db push no boot: aplica colunas novas do schema automaticamente
 # (evita quebra de páginas quando o banco está atrasado em relação ao código)
-CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss && npm start"]
+# Melhor-esforço: se falhar, loga em /tmp/dbpush.log e o app sobe mesmo assim
+CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss > /tmp/dbpush.log 2>&1 || echo 'db push skipped (see /tmp/dbpush.log)'; npm start"]
