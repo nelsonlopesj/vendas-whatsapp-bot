@@ -16,6 +16,8 @@ model Tenant {
   evolutionUrl       String?
   evolutionApikey    String?
   mercadopagoToken   String?
+  pagbankToken       String?   // Token PagBank (painel → Vendas → Integrações → Gerar Token)
+  paymentGateway     String    @default("auto") // auto | mercadopago | infinitepay | pagbank
   isActive           Boolean   @default(true)
   stripeCustomerId   String?
   subscriptionStatus String    @default("trial")

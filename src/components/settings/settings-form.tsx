@@ -14,9 +14,13 @@ import {
   ArrowRight,
 } from "lucide-react";
 
+type Provider = "mercadopago" | "infinitepay" | "pagbank";
+
 interface SettingsFormProps {
   tenant: {
     mercadopagoToken: string | null;
+    pagbankToken?: string | null;
+    paymentGateway?: string;
   };
 }
 
@@ -32,20 +36,44 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
   const [mercadopagoToken, setMercadopagoToken] = useState(
     tenant.mercadopagoToken || ""
   );
-  // Token efetivamente salvo no banco (para mostrar o gateway ATIVO)
-  const [savedToken, setSavedToken] = useState(tenant.mercadopagoToken || "");
+  const [pagbankToken, setPagbankToken] = useState(
+    tenant.pagbankToken || ""
+  );
+  // Gateway efetivamente salvo no banco (para mostrar o ATIVO)
+  const [savedGateway, setSavedGateway] = useState<string>(
+    tenant.paymentGateway || "auto"
+  );
+  const [savedMpToken, setSavedMpToken] = useState(tenant.mercadopagoToken || "");
+  const [savedPbToken, setSavedPbToken] = useState(tenant.pagbankToken || "");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  const [provider, setProvider] = useState<"mercadopago" | "infinitepay">(
-    detectProvider(tenant.mercadopagoToken || "")
+  const [provider, setProvider] = useState<Provider>(
+    (tenant.paymentGateway as Provider) === "pagbank"
+      ? "pagbank"
+      : detectProvider(tenant.mercadopagoToken || "")
   );
 
-  const activeProvider = detectProvider(savedToken);
+  const activeProvider: Provider =
+    savedGateway === "pagbank"
+      ? "pagbank"
+      : savedGateway === "infinitepay" || savedGateway === "mercadopago"
+        ? savedGateway
+        : detectProvider(savedMpToken);
 
   // Troca o provedor selecionado; limpa o campo se o token atual não servir
-  const switchProvider = (p: "mercadopago" | "infinitepay") => {
+  const switchProvider = (p: Provider) => {
     setProvider(p);
+    if (p === "pagbank") {
+      if (!pagbankToken.trim()) {
+        setMessage(
+          "Agora cole o token do PagBank (painel → Vendas → Integrações → Gerar Token) e clique em Salvar."
+        );
+      } else {
+        setMessage("");
+      }
+      return;
+    }
     if (detectProvider(mercadopagoToken) !== p || mercadopagoToken.trim() === "") {
       setMercadopagoToken("");
       setMessage(
@@ -110,18 +138,32 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
     const res = await fetch("/api/tenant/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mercadopagoToken }),
+      body: JSON.stringify({
+        mercadopagoToken,
+        pagbankToken,
+        paymentGateway: provider,
+      }),
     });
     setSaving(false);
     if (res.ok) {
-      setSavedToken(mercadopagoToken);
-      const active =
-        mercadopagoToken.trim() === ""
-          ? "nenhum (pagamentos desativados)"
-          : detectProvider(mercadopagoToken) === "mercadopago"
-            ? "Mercado Pago"
-            : "InfinitePay";
-      setMessage(`✅ Salvo! Gateway ativo: ${active}.`);
+      setSavedMpToken(mercadopagoToken);
+      setSavedPbToken(pagbankToken);
+      setSavedGateway(provider);
+      const label =
+        provider === "mercadopago"
+          ? "Mercado Pago"
+          : provider === "infinitepay"
+            ? "InfinitePay"
+            : "PagBank";
+      const hasToken =
+        provider === "pagbank"
+          ? pagbankToken.trim() !== ""
+          : mercadopagoToken.trim() !== "";
+      setMessage(
+        `✅ Salvo! Gateway ativo: ${label}${
+          hasToken ? "" : " (sem token — pagamentos desativados)"
+        }.`
+      );
     } else {
       setMessage("❌ Erro ao salvar.");
     }
@@ -231,7 +273,7 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
 
           <div className="ml-8 space-y-4">
             {/* Seletor de provedor */}
-            <div className="inline-flex rounded-lg border border-border overflow-hidden">
+            <div className="inline-flex rounded-lg border border-border overflow-hidden flex-wrap">
               <button
                 type="button"
                 onClick={() => switchProvider("mercadopago")}
@@ -254,31 +296,47 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
               >
                 InfinitePay
               </button>
+              <button
+                type="button"
+                onClick={() => switchProvider("pagbank")}
+                className={`px-4 py-2 text-sm font-medium transition-colors ${
+                  provider === "pagbank"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                PagBank
+              </button>
             </div>
 
             {/* Status do gateway ativo */}
             <div className="p-3 rounded-lg bg-muted/30">
               <p className="text-xs">
-                {savedToken.trim() === "" ? (
-                  <span className="text-amber-600">
-                    ⚠️ Nenhum gateway configurado — pagamentos desativados
+                <span>
+                  Gateway ativo agora:{" "}
+                  <strong>
+                    {activeProvider === "mercadopago"
+                      ? "Mercado Pago"
+                      : activeProvider === "infinitepay"
+                        ? "InfinitePay"
+                        : "PagBank"}
+                  </strong>
+                </span>
+                {((activeProvider === "pagbank" && !savedPbToken.trim()) ||
+                  (activeProvider !== "pagbank" && !savedMpToken.trim())) && (
+                  <span className="block text-amber-600 mt-1">
+                    ⚠️ Token deste gateway não está salvo — pagamentos
+                    desativados
                   </span>
-                ) : (
-                  <>
-                    Gateway ativo agora:{" "}
-                    <strong>
-                      {activeProvider === "mercadopago"
-                        ? "Mercado Pago"
-                        : "InfinitePay"}
-                    </strong>
-                  </>
                 )}
-                {savedToken.trim() !== "" && provider !== activeProvider && (
+                {provider !== activeProvider && (
                   <span className="block text-amber-600 mt-1">
                     Para trocar para{" "}
                     {provider === "mercadopago"
                       ? "Mercado Pago"
-                      : "InfinitePay"}, cole o token dele no campo abaixo e
+                      : provider === "infinitepay"
+                        ? "InfinitePay"
+                        : "PagBank"}, cole o token dele no campo abaixo e
                     clique em Salvar.
                   </span>
                 )}
@@ -307,6 +365,23 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
                     Copie o <strong>Access Token</strong> (APP_USR-...)
                   </li>
                   <li>Cole abaixo e salve</li>
+                </ol>
+              </div>
+            ) : provider === "pagbank" ? (
+              <div className="p-4 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                <p className="text-sm font-semibold mb-2">
+                  📋 Como configurar o PagBank:
+                </p>
+                <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
+                  <li>Crie sua conta PagBank (app ou pagbank.com.br) e ative uma <strong>chave PIX</strong> na conta</li>
+                  <li>
+                    No painel PagBank desktop: <strong>Vendas → Integrações → Gerar Token</strong>
+                  </li>
+                  <li>Cole o token abaixo e salve</li>
+                  <li>
+                    O ezflow envia o <strong>código PIX copia-e-cola direto</strong> no
+                    WhatsApp (sem página de checkout) e a confirmação é automática
+                  </li>
                 </ol>
               </div>
             ) : (
@@ -338,31 +413,49 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
               <label className="block text-xs font-medium mb-1">
                 {provider === "mercadopago"
                   ? "Access Token (Mercado Pago)"
-                  : "InfiniteTag (InfinitePay)"}
+                  : provider === "infinitepay"
+                    ? "InfiniteTag (InfinitePay)"
+                    : "Token (PagBank)"}
               </label>
               <div className="flex gap-2">
-                <input
-                  type={provider === "mercadopago" ? "password" : "text"}
-                  value={mercadopagoToken}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setMercadopagoToken(v);
-                    if (v.startsWith("APP_USR-") || v.startsWith("TEST-")) {
-                      setProvider("mercadopago");
-                    } else if (v.trim() !== "") {
-                      setProvider("infinitepay");
+                {provider === "pagbank" ? (
+                  <input
+                    type="password"
+                    value={pagbankToken}
+                    onChange={(e) => setPagbankToken(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+                    placeholder="Token do PagBank"
+                  />
+                ) : (
+                  <input
+                    type={provider === "mercadopago" ? "password" : "text"}
+                    value={mercadopagoToken}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setMercadopagoToken(v);
+                      if (v.startsWith("APP_USR-") || v.startsWith("TEST-")) {
+                        setProvider("mercadopago");
+                      } else if (v.trim() !== "") {
+                        setProvider("infinitepay");
+                      }
+                    }}
+                    className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono"
+                    placeholder={
+                      provider === "mercadopago"
+                        ? "APP_USR-..."
+                        : "sua-infinite-tag"
                     }
-                  }}
-                  className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring font-mono"
-                  placeholder={
-                    provider === "mercadopago"
-                      ? "APP_USR-..."
-                      : "sua-infinite-tag"
-                  }
-                />
+                  />
+                )}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                {mercadopagoToken ? (
+                {provider === "pagbank" ? (
+                  pagbankToken ? (
+                    "✅ Token do PagBank salvo (salve para ativar)"
+                  ) : (
+                    "Token gerado no painel PagBank → Vendas → Integrações → Gerar Token"
+                  )
+                ) : mercadopagoToken ? (
                   provider === "infinitepay" ? (
                     "✅ Gateway detectado: InfinitePay (InfiniteTag)"
                   ) : (

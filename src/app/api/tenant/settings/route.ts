@@ -11,8 +11,14 @@ export async function PUT(req: NextRequest) {
   }
 
   try {
-    const { whatsappNumber, evolutionUrl, evolutionApikey, mercadopagoToken } =
-      await req.json();
+    const {
+      whatsappNumber,
+      evolutionUrl,
+      evolutionApikey,
+      mercadopagoToken,
+      pagbankToken,
+      paymentGateway,
+    } = await req.json();
 
     const tenant = await prisma.tenant.update({
       where: { id: tenantId },
@@ -21,6 +27,8 @@ export async function PUT(req: NextRequest) {
         evolutionUrl,
         evolutionApikey,
         mercadopagoToken,
+        pagbankToken,
+        paymentGateway,
       },
     });
 
