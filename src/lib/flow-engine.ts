@@ -1186,7 +1186,7 @@ export class FlowEngine {
             } catch (err: any) {
               pixError = err;
               if (attempt < 2) {
-                console.log(`[PIX-RETRY] attempt ${attempt + 1} failed, retrying in 2s...`);
+                console.log(`[PIX-RETRY] attempt ${attempt + 1} failed (${err.message}), retrying in 2s...`);
                 await new Promise(r => setTimeout(r, 2000));
               }
             }
@@ -1354,6 +1354,26 @@ export class FlowEngine {
       }
 
       case "DELIVER_PRODUCT": {
+        // SEGURANÇA: nunca entregar sem uma venda PAID nesta sessão
+        // (sessões zumbis retomadas por jobs antigos desembocavam aqui)
+        const sessionId = (session as any)?.id;
+        if (sessionId) {
+          const paidSale = await prisma.sale.findFirst({
+            where: { sessionId, status: "PAID" },
+            select: { id: true },
+          });
+          if (!paidSale) {
+            console.warn(`[DELIVER] no PAID sale for session ${sessionId?.slice(-8)} — skipping delivery (safety)`);
+            return {
+              nextStepId: hasGraphEdges(allSteps as any[])
+                ? resolveOutgoing(allSteps as any[], step as any, PORT_NEXT)
+                : step.nextStepId || allSteps.find(s => s.order === step.order + 1)?.id || null,
+              status: "active",
+              variables,
+              loopCounters,
+            };
+          }
+        }
         const fileUrl = variables["product.fileUrl"] || config.fileUrl || "";
         const productName = variables["product.name"] || "seu produto";
         const deliveryMsg = renderTemplate(
