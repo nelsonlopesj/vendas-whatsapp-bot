@@ -150,3 +150,25 @@ export function detectPixProvider(
     return "mercadopago";
   return "infinitepay";
 }
+
+/**
+ * Gateway ativo de um tenant (3 vias):
+ * 1. Seleção explícita salva em `paymentGateway` (Configurações)
+ * 2. Token PagBank salvo → pagbank
+ * 3. Heurística por prefixo no token antigo (Mercado Pago vs InfinitePay)
+ */
+export function resolvePaymentGateway(
+  tenant: any
+): "mercadopago" | "infinitepay" | "pagbank" {
+  const explicit = tenant?.paymentGateway;
+  if (
+    explicit === "mercadopago" ||
+    explicit === "infinitepay" ||
+    explicit === "pagbank"
+  ) {
+    return explicit;
+  }
+  if (tenant?.pagbankToken) return "pagbank";
+  const detected = detectPixProvider(tenant?.mercadopagoToken);
+  return detected === "unknown" ? "mercadopago" : detected;
+}
