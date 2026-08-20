@@ -1,0 +1,24 @@
+# Nunca enviar ao contexto de build (reduz MUITO o tempo de deploy)
+node_modules
+.next
+.git
+.githooks
+
+# Gerados no build (npx prisma generate no Dockerfile)
+generated
+
+# Uploads locais e arquivos grandes
+public/uploads
+*.log
+npm-debug.log*
+
+# Ambiente local
+.env
+.env.local
+.env.*.local
+
+# IDE e sistema
+.vscode
+.idea
+.DS_Store
+Thumbs.db
