@@ -44,12 +44,6 @@ export default function ForgotPasswordPage() {
                 <CheckCircle2 className="w-5 h-5 text-green-500 mb-2" />
                 <p className="text-sm text-green-700">Link gerado!</p>
               </div>
-              {resetUrl && (
-                <div className="p-4 rounded-xl bg-muted/50 border border-border">
-                  <p className="text-xs text-muted-foreground mb-2">Link de recuperação (MVP):</p>
-                  <a href={resetUrl} className="text-xs text-primary break-all hover:underline">{resetUrl}</a>
-                </div>
-              )}
               <Link href="/login" className="block text-center text-sm text-primary hover:underline">Voltar ao login</Link>
             </div>
           ) : (

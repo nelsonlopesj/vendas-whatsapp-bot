@@ -64,7 +64,9 @@ export async function POST(req: NextRequest) {
           email,
           name,
           password: hashedPassword,
-          role: "owner",
+          // "admin" (não owner): owner é reservado ao master da plataforma —
+          // clientes nascem com trial/cobrança ativos e SEM acesso ao admin
+          role: "admin",
         },
       });
 

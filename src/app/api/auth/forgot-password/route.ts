@@ -22,11 +22,11 @@ export async function POST(req: NextRequest) {
 
   const resetUrl = `${process.env.NEXTAUTH_URL}/reset-password?token=${token}`;
 
-  // Em produção: enviar por email. No MVP, retornamos o link.
+  // O link NUNCA pode voltar na resposta (takeover de conta). Em produção,
+  // envie por email. Por enquanto, o link fica só no log do servidor.
   console.log(`[PASSWORD-RESET] ${user.email}: ${resetUrl}`);
 
   return NextResponse.json({
-    message: "Link de recuperação gerado.",
-    resetUrl, // Remover em produção
+    message: "Se o email existir, um link de recuperação será enviado.",
   });
 }

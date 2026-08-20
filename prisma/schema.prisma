@@ -40,7 +40,7 @@ model User {
   email         String    @unique
   name          String?
   password      String?   // bcrypt hash
-  role          String    @default("owner") // owner | admin | operator
+  role          String    @default("admin") // owner (só master) | admin | operator
   resetToken    String?
   resetTokenExp DateTime?
   emailVerified DateTime?

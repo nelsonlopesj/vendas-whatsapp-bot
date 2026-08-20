@@ -24,10 +24,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Size limit: 100MB
-    if (file.size > 100 * 1024 * 1024) {
+    // Size limit: 50MB
+    if (file.size > 50 * 1024 * 1024) {
       return NextResponse.json(
         { error: "Arquivo muito grande (máx 50MB)" },
+        { status: 400 }
+      );
+    }
+
+    // Whitelist de extensão: produtos digitais seguros (PDF, áudio, vídeo,
+    // imagem). Bloqueia svg/html/js (XSS armazenado no mesmo domínio)
+    const ALLOWED_EXT = new Set([
+      ".pdf", ".mp3", ".m4a", ".ogg", ".wav",
+      ".mp4", ".mov", ".avi", ".jpg", ".jpeg", ".png", ".gif", ".webp",
+    ]);
+    const ext = path.extname(file.name).toLowerCase();
+    if (!ALLOWED_EXT.has(ext)) {
+      return NextResponse.json(
+        { error: `Tipo de arquivo não permitido (${ext || "sem extensão"}). Use PDF, áudio, vídeo ou imagem.` },
         { status: 400 }
       );
     }
@@ -36,7 +50,6 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(bytes);
 
     // Generate unique filename
-    const ext = path.extname(file.name);
     const filename = `${crypto.randomUUID()}${ext}`;
     const uploadDir = path.join(process.cwd(), "public", "uploads");
 

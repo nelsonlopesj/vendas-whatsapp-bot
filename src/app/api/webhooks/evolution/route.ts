@@ -98,9 +98,13 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Sem sessão: tenta keyword match
+      // Sem sessão: tenta keyword match (respeitando a assinatura)
       if (!processed) {
         for (const tenant of tenants) {
+          const { checkSubscription } = await import("@/lib/subscription");
+          const sub = await checkSubscription(tenant.id);
+          if (!sub.allowed) continue;
+
           const result = await FlowEngine.processIncoming(phone, message, tenant.id, pushName, evolutionClient);
 
           if (result.action !== "no_match") {

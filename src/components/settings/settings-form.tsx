@@ -312,6 +312,13 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
             {/* Status do gateway ativo */}
             <div className="p-3 rounded-lg bg-muted/30">
               <p className="text-xs">
+                {savedGateway === "auto" &&
+                !savedMpToken.trim() &&
+                !savedPbToken.trim() ? (
+                  <span className="text-amber-600">
+                    ⚠️ Nenhum gateway configurado — pagamentos desativados
+                  </span>
+                ) : (
                 <span>
                   Gateway ativo agora:{" "}
                   <strong>
@@ -322,6 +329,7 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
                         : "PagBank"}
                   </strong>
                 </span>
+                )}
                 {((activeProvider === "pagbank" && !savedPbToken.trim()) ||
                   (activeProvider !== "pagbank" && !savedMpToken.trim())) && (
                   <span className="block text-amber-600 mt-1">
