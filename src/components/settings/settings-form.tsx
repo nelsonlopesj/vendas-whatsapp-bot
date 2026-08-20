@@ -94,11 +94,13 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
   const [loadingQr, setLoadingQr] = useState(false);
   const [qrError, setQrError] = useState("");
 
-  const fetchQrCode = async () => {
+  const fetchQrCode = async (forceReset = false) => {
     setLoadingQr(true);
     setQrError("");
     try {
-      const res = await fetch("/api/evolution/qrcode");
+      const res = await fetch(
+        `/api/evolution/qrcode${forceReset ? "?reset=1" : ""}`
+      );
       const data = await res.json();
 
       if (data.connected) {
@@ -223,13 +225,13 @@ export function SettingsForm({ tenant }: SettingsFormProps) {
                 </p>
                 <button
                   type="button"
-                  onClick={fetchQrCode}
+                  onClick={() => fetchQrCode(true)}
                   className="inline-flex items-center gap-1.5 mt-4 text-xs text-primary hover:underline"
                 >
                   <RefreshCw
                     className={`w-3.5 h-3.5 ${loadingQr ? "animate-spin" : ""}`}
                   />
-                  Atualizar QR Code
+                  Atualizar QR Code (gera novo)
                 </button>
               </div>
             ) : qrError ? (

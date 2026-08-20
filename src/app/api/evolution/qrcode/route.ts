@@ -19,12 +19,16 @@ async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = 5
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   const tenantId = (session?.user as any)?.tenantId;
   if (!tenantId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
+
+  // reset=1 força apagar e recriar a instância (usado pelo botão
+  // "Atualizar QR Code" quando o QR expira/trava de verdade)
+  const reset = new URL(req.url).searchParams.get("reset") === "1";
 
   try {
     const instance = "default";
@@ -45,9 +49,28 @@ export async function GET() {
           ensureEvolutionWebhook().catch(() => {});
           return NextResponse.json({ connected: true, state: "open", qrcode: null });
         }
-        // Se tá travado em "connecting", deleta pra recriar limpo
         if (state === "connecting") {
-          try { await fetchWithTimeout(`${baseUrl}/instance/delete/${instance}`, { method: "DELETE", headers: { apikey: WA_KEY } }, 3000); } catch {}
+          if (reset) {
+            // Reset explícito: apaga e recria abaixo
+            try { await fetchWithTimeout(`${baseUrl}/instance/delete/${instance}`, { method: "DELETE", headers: { apikey: WA_KEY } }, 3000); } catch {}
+          } else {
+            // NÃO deletar durante "connecting": o QR pendente continua válido
+            // (deletar invalidava o QR enquanto o usuário escaneia)
+            const qrRes = await fetchWithTimeout(
+              `${baseUrl}/instance/connect/${instance}`,
+              { headers: { apikey: WA_KEY } },
+              5000
+            );
+            if (qrRes.ok) {
+              const qrData = await qrRes.json();
+              const raw = qrData?.base64 || qrData?.qrcode || qrData?.qr_code || null;
+              const qrcode = raw ? raw.replace(/^data:image\/\w+;base64,/, "") : null;
+              if (qrcode) {
+                return NextResponse.json({ connected: false, state: "qrcode", qrcode });
+              }
+            }
+            return NextResponse.json({ connected: false, state: "connecting", qrcode: null });
+          }
         }
       }
     } catch {
