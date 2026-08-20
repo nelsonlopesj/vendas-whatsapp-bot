@@ -428,7 +428,9 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
       setMessage("Fluxo salvo! Redirecionando...");
       setTimeout(() => router.push("/dashboard/flows"), 800);
     } else {
-      setMessage("Erro ao salvar. Verifique os dados.");
+      // Surfaça o erro real do servidor (ex: 402 trial expirado)
+      const data = await res.json().catch(() => ({}));
+      setMessage(data.error || "Erro ao salvar. Verifique os dados.");
     }
   };
 
