@@ -11,7 +11,24 @@ export async function POST(req: NextRequest) {
   const userEmail = session?.user?.email || "";
   if (!tenantId) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
+  const priceId = process.env.STRIPE_PRICE_ID || "";
+  if (!priceId || priceId === "price_xxx") {
+    console.error("[STRIPE] STRIPE_PRICE_ID não configurado");
+    return NextResponse.json(
+      { error: "Configuração de preço ausente. Contate o suporte da plataforma." },
+      { status: 500 }
+    );
+  }
+
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+
+  // Não permitir assinatura duplicada
+  if (tenant?.subscriptionStatus === "active") {
+    return NextResponse.json(
+      { error: "Sua conta já possui uma assinatura ativa." },
+      { status: 400 }
+    );
+  }
 
   // Criar ou reusar customer Stripe
   let customerId = tenant?.stripeCustomerId;
@@ -21,7 +38,6 @@ export async function POST(req: NextRequest) {
     await prisma.tenant.update({ where: { id: tenantId }, data: { stripeCustomerId: customerId } });
   }
 
-  const priceId = process.env.STRIPE_PRICE_ID || "price_xxx"; // Criar no dashboard Stripe
   const checkout = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: "subscription",
