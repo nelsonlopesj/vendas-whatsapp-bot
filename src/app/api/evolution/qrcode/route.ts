@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { ensureEvolutionWebhook } from "@/lib/evolution-webhook";
+import { ensureEvolutionWebhook, getTenantInstance } from "@/lib/evolution-webhook";
 
 const WA_URL = process.env.EZFLOW_WA_URL || "http://evolution:8080";
 const WA_KEY = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
@@ -31,7 +31,8 @@ export async function GET(req: NextRequest) {
   const reset = new URL(req.url).searchParams.get("reset") === "1";
 
   try {
-    const instance = "default";
+    // Instância por tenant: master usa "default", clientes usam o tenantId
+    const instance = await getTenantInstance(tenantId);
     const baseUrl = WA_URL.replace(/\/$/, "");
 
     // 1. Verificar status
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
         const state = statusData?.instance?.state;
         if (state === "open") {
           // Conectado: re-garante o webhook (reconexões podem tê-lo derrubado)
-          ensureEvolutionWebhook().catch(() => {});
+          ensureEvolutionWebhook(instance).catch(() => {});
           return NextResponse.json({ connected: true, state: "open", qrcode: null });
         }
         if (state === "connecting") {
@@ -89,7 +90,7 @@ export async function GET(req: NextRequest) {
         5000
       );
       // Configurar webhook automaticamente (idempotente)
-      await ensureEvolutionWebhook();
+      await ensureEvolutionWebhook(instance);
     } catch {}
 
     // 3. Buscar QR Code

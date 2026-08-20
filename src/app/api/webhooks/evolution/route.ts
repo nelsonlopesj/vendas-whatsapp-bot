@@ -30,13 +30,19 @@ export async function POST(req: NextRequest) {
 
     const { phone, message, messageId, pushName } = parsed;
 
+    // Segregação por instância: cada tenant tem a própria instância Evolution
+    // (master usa "default"; clientes usam o tenantId). O payload traz o
+    // nome da instância — roteamos só para o tenant dono dela.
+    const instance = body?.instance || "";
+    const { getTenantInstance } = await import("@/lib/evolution-webhook");
+
     // Ignorar duplicatas (Evolution pode enviar webhook 2x)
     if (recentIds.has(messageId)) {
       return NextResponse.json({ success: true, ignored: true, reason: "duplicate" });
     }
     recentIds.set(messageId, Date.now());
 
-    console.log(`[WA-IN] ${phone}: "${message}" (${pushName || "?"})`);
+    console.log(`[WA-IN] ${phone}: "${message}" (${pushName || "?"}) instance=${instance || "?"}`);
 
     // Serializar processamento por telefone (evita sessões duplicadas)
     const previousLock = processingLock.get(phone);
@@ -44,24 +50,45 @@ export async function POST(req: NextRequest) {
       // Aguarda processamento anterior terminar (se existir)
       if (previousLock) await previousLock;
 
-      // Buscar todos os tenants ativos
-      const tenants = await prisma.tenant.findMany({
-        where: { isActive: true },
-      });
+      // Resolve o tenant dono da instância (fallback legado: todos, quando
+      // o webhook não traz instância)
+      let tenants: any[];
+      if (instance) {
+        const tenantId =
+          instance === "default"
+            ? (
+                await prisma.tenant.findFirst({
+                  where: { users: { some: { role: "owner" } }, isActive: true },
+                  select: { id: true },
+                })
+              )?.id
+            : instance;
+        const target = tenantId
+          ? await prisma.tenant.findUnique({ where: { id: tenantId } })
+          : null;
+        if (!target || !target.isActive) {
+          console.log(`[WA-INST] no active tenant for instance ${instance}, ignoring`);
+          return false;
+        }
+        tenants = [target];
+      } else {
+        tenants = await prisma.tenant.findMany({ where: { isActive: true } });
+      }
 
       if (tenants.length === 0) {
         return false;
       }
 
-      const evolutionClient = new EvolutionClient({
-        baseUrl: WA_URL,
-        apikey: WA_KEY,
-        instance: "default",
-      });
-
       let processed = false;
 
       for (const tenant of tenants) {
+        // Cliente por tenant: instância própria para envio das respostas
+        const evolutionClient = new EvolutionClient({
+          baseUrl: WA_URL,
+          apikey: WA_KEY,
+          instance: await getTenantInstance(tenant.id),
+        });
+
         // Verificar assinatura
         const { checkSubscription } = await import("@/lib/subscription");
         const sub = await checkSubscription(tenant.id);
@@ -105,7 +132,13 @@ export async function POST(req: NextRequest) {
           const sub = await checkSubscription(tenant.id);
           if (!sub.allowed) continue;
 
-          const result = await FlowEngine.processIncoming(phone, message, tenant.id, pushName, evolutionClient);
+          const keywordClient = new EvolutionClient({
+            baseUrl: WA_URL,
+            apikey: WA_KEY,
+            instance: await getTenantInstance(tenant.id),
+          });
+
+          const result = await FlowEngine.processIncoming(phone, message, tenant.id, pushName, keywordClient);
 
           if (result.action !== "no_match") {
             await prisma.messageLog.create({

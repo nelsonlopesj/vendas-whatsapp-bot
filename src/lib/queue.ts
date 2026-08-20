@@ -152,7 +152,8 @@ export const timeoutWorker = new Worker(
       const waUrl = session.tenant?.evolutionUrl || process.env.EZFLOW_WA_URL || "http://evolution:8080";
       const waKey = session.tenant?.evolutionApikey || process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
       const { EvolutionClient } = await import("./evolution");
-      const evo = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: "default" });
+      const { getTenantInstance } = await import("./evolution-webhook");
+      const evo = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: await getTenantInstance(session.tenant?.id || "") });
       await evo.sendText({ number: session.customerPhone, text });
       return;
     }

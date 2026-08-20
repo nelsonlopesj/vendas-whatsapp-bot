@@ -6,12 +6,13 @@ export async function register() {
   const { flowTimeoutQueue } = await import("./lib/queue");
   console.log("[INSTR] BullMQ workers initialized via instrumentation");
 
-  // Auto-cura do webhook da Evolution: no boot e a cada 5 minutos
-  // (reconexões de WhatsApp podem derrubar a config de webhook)
-  const { ensureEvolutionWebhook } = await import("./lib/evolution-webhook");
-  ensureEvolutionWebhook().catch(() => {});
+  // Auto-cura do webhook da Evolution: no boot e a cada 5 minutos, para o
+  // master ("default") E para cada instância de tenant (reconexões de
+  // WhatsApp podem derrubar a config de webhook)
+  const { ensureAllEvolutionWebhooks } = await import("./lib/evolution-webhook");
+  ensureAllEvolutionWebhooks().catch(() => {});
   setInterval(() => {
-    ensureEvolutionWebhook().catch(() => {});
+    ensureAllEvolutionWebhooks().catch(() => {});
   }, 5 * 60 * 1000);
 
   // Recuperar timeouts pendentes (perdidos após restart/deploy)

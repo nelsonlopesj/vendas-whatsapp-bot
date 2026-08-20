@@ -10,6 +10,7 @@ import prisma from "./prisma";
 import { EvolutionClient } from "./evolution";
 import { MercadoPagoClient } from "./mercadopago";
 import { detectPixProvider, resolvePaymentGateway } from "./infinitepay";
+import { getTenantInstance } from "./evolution-webhook";
 import {
   hasGraphEdges,
   resolveOutgoing,
@@ -1829,7 +1830,7 @@ export class FlowEngine {
         if (saleMeta?.trustMode) {
           const waUrl = process.env.EZFLOW_WA_URL || "http://evolution:8080";
           const waKey = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
-          const evo = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: "default" });
+          const evo = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: await getTenantInstance(sale.tenantId) });
           const thankMsg = `Muito obrigado pela sua contribuição de R$${sale.amount.toFixed(2)}! 🙏\n\nSua generosidade mantém esse projeto vivo. Deus abençoe! ❤️`;
           try { await evo.sendText({ number: sale.customerPhone, text: thankMsg }); } catch {}
           await prisma.sale.update({ where: { id: sale.id }, data: { deliveryStatus: "sent", deliveredAt: new Date() } });
@@ -1875,7 +1876,7 @@ export class FlowEngine {
             const evolutionClient = new EvolutionClient({
               baseUrl: waUrl,
               apikey: waKey,
-              instance: "default",
+              instance: await getTenantInstance(session?.tenantId || tenantId),
             });
 
             console.log(`[DELIVER] executing delivery step ${deliverStep.type}...`);
@@ -1943,7 +1944,7 @@ export class FlowEngine {
 
           const waUrl = process.env.EZFLOW_WA_URL || "http://evolution:8080";
           const waKey = process.env.EZFLOW_WA_KEY || process.env.EVOLUTION_API_KEY || "ezflow-master-key";
-          const evo = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: "default" });
+          const evo = new EvolutionClient({ baseUrl: waUrl, apikey: waKey, instance: await getTenantInstance(session.tenantId) });
 
           // Mensagem de expiração imediata
           if (onExpired === "retry") {
@@ -2026,7 +2027,7 @@ export class FlowEngine {
     const evolutionClient = new EvolutionClient({
       baseUrl: waUrl,
       apikey: waKey,
-      instance: "default",
+      instance: await getTenantInstance(session.tenantId),
     });
 
     // Orçamento de retomadas POR SESSÃO: ciclos entre passes (via delays
@@ -2227,7 +2228,7 @@ export class FlowEngine {
         const evolutionClient = new EvolutionClient({
           baseUrl: waUrl,
           apikey: waKey,
-          instance: "default",
+          instance: await getTenantInstance(session.tenantId),
         });
 
         await evolutionClient.sendText({
@@ -2280,7 +2281,7 @@ export class FlowEngine {
       const evolutionClient = new EvolutionClient({
         baseUrl: waUrl,
         apikey: waKey,
-        instance: "default",
+        instance: await getTenantInstance(session.tenantId),
       });
 
       const flowKeyword = session.flow?.triggerKeyword || "iniciar";
