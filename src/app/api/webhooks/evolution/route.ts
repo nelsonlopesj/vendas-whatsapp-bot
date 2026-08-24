@@ -20,6 +20,9 @@ setInterval(() => {
 // Lock por telefone: evita race condition que cria sessões duplicadas
 const processingLock = new Map<string, Promise<void>>();
 
+// Rate limit do menu de boas-vindas: 1 envio por telefone+tenant a cada 10 min
+const noMatchMenuAt = new Map<string, number>();
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -162,6 +165,41 @@ export async function POST(req: NextRequest) {
 
       if (!processed) {
         console.log(`[WA-NOMATCH] ${phone}: "${message}" — nenhum fluxo`);
+
+        // Menu de boas-vindas: mensagem sem keyword e sem sessão ativa
+        // recebe a lista de produtos do tenant (rate limit 10 min)
+        if (instance && tenants.length === 1) {
+          const tenant = tenants[0];
+          const menuKey = `${tenant.id}:${phone}`;
+          const lastMenu = noMatchMenuAt.get(menuKey) || 0;
+          if (Date.now() - lastMenu > 10 * 60 * 1000) {
+            noMatchMenuAt.set(menuKey, Date.now());
+            try {
+              const flows = await prisma.flow.findMany({
+                where: { tenantId: tenant.id, isActive: true },
+                orderBy: { createdAt: "asc" },
+                select: { name: true, triggerKeyword: true },
+              });
+              if (flows.length > 0) {
+                const items = flows
+                  .map((f) => `• ${f.name} — digite *${f.triggerKeyword}*`)
+                  .join("\n");
+                const menuClient = new EvolutionClient({
+                  baseUrl: WA_URL,
+                  apikey: WA_KEY,
+                  instance: await getTenantInstance(tenant.id),
+                });
+                await menuClient.sendText({
+                  number: phone,
+                  text: `Olá! 👋 Que bom te ver por aqui!\n\nAqui estão nossos produtos:\n${items}\n\nÉ só digitar a palavra do produto que você quer! 😊`,
+                });
+                console.log(`[WA-MENU] sent to ${phone} (tenant ${tenant.id?.slice(-8)})`);
+              }
+            } catch (err: any) {
+              console.error(`[WA-MENU] failed: ${err.message}`);
+            }
+          }
+        }
       }
 
       return processed;

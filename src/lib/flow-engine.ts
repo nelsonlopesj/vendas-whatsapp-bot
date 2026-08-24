@@ -60,13 +60,23 @@ function renderTemplate(
 
 // ===== Keyword Matching =====
 
+// Normaliza texto para matching: minúsculas, trim e sem acentos
+// ("colorir" casa com "COLORIR", "colori" não casa — mas "Coloír"? não; acentos sim)
+function normalizeMatchText(s: string): string {
+  return s
+    .toLowerCase()
+    .trim()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
 function matchKeyword(
   message: string,
   keyword: string,
   mode: string
 ): boolean {
-  const msg = message.toLowerCase().trim();
-  const kw = keyword.toLowerCase().trim();
+  const msg = normalizeMatchText(message);
+  const kw = normalizeMatchText(keyword);
 
   switch (mode) {
     case "exact":
@@ -90,8 +100,8 @@ function matchResponse(
   expected: string[],
   operator: string = "contains_any"
 ): boolean {
-  const msg = message.toLowerCase().trim();
-  const values = expected.map((v) => v.toLowerCase().trim());
+  const msg = normalizeMatchText(message);
+  const values = expected.map((v) => normalizeMatchText(v));
 
   switch (operator) {
     case "equals":
@@ -676,6 +686,37 @@ export class FlowEngine {
         const welcomeMsg = pixConfig.trustWelcomeMessage || `🎁 Quero que você conheça meu trabalho. Vou liberar o material agora. Se ajudar, contribua. Você decide. ❤️`;
         allVars["_trustMode"] = "asking_amount";
         await prisma.flowSession.update({ where: { id: session.id }, data: { variables: allVars, lastActivityAt: new Date() } });
+
+        // Cancelar o PIX original (o cliente escolheu o caminho confiança):
+        // marca a venda como CANCELLED + supersededByTrust e remove os
+        // lembretes agendados para não alertar depois da entrega
+        try {
+          const pendingSales = await prisma.sale.findMany({
+            where: { sessionId: session.id, status: "PENDING" },
+            select: { id: true, metadata: true },
+          });
+          for (const ps of pendingSales) {
+            await prisma.sale.update({
+              where: { id: ps.id },
+              data: {
+                status: "CANCELLED",
+                // mescla (não substitui) o metadata original
+                metadata: { ...(ps.metadata as any), supersededByTrust: true },
+              },
+            });
+          }
+          const { flowTimeoutQueue } = await import("./queue");
+          for (const jobId of [`pix-reminder1-${session.id}`, `pix-reminder2-${session.id}`]) {
+            try {
+              const job = await flowTimeoutQueue.getJob(jobId);
+              if (job) await job.remove();
+            } catch {}
+          }
+          console.log(`[TRUST] original PIX superseded for session ${session.id?.slice(-8)}`);
+        } catch (err: any) {
+          console.error(`[TRUST] failed to supersede original PIX: ${err.message}`);
+        }
+
         if (evolutionClient) {
           await evolutionClient.sendText({ number: session.customerPhone, text: welcomeMsg });
           // Entrega os arquivos (sem mensagem de pagamento)
@@ -1914,8 +1955,10 @@ export class FlowEngine {
           data: { status: "CANCELLED" },
         });
 
-        // Se tem sessão, voltar ou encerrar
-        if (sale.session) {
+        // PIX substituído pelo módulo confiança: NÃO falhar a sessão
+        // (a sessão está viva no fluxo de contribuição)
+        const superseded = (sale.metadata as any)?.supersededByTrust;
+        if (sale.session && !superseded) {
           await prisma.flowSession.update({
             where: { id: sale.session.id },
             data: { status: "failed", failureReason: "payment_cancelled" },
@@ -1932,6 +1975,11 @@ export class FlowEngine {
           : ["expired", "rejected"].includes(gatewayStatus)
       ) {
         await prisma.sale.update({ where: { id: sale.id }, data: { status: "CANCELLED" } });
+        // PIX substituído pelo módulo confiança: silêncio total (sem mensagens
+        // de expiração nem follow-up — o produto já foi entregue)
+        if ((sale.metadata as any)?.supersededByTrust) {
+          return { success: true, delivered: false };
+        }
         if (session) {
           // Multi-ramo: usa o step exato que gerou o PIX (metadata.pixStepId),
           // com fallback no primeiro GENERATE_PIX para vendas legadas

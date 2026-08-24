@@ -86,8 +86,15 @@ export function matchValues(
   values: string[],
   operator: string = "contains_any"
 ): boolean {
-  const msg = message.toLowerCase().trim();
-  const vals = values.map((v) => v.toLowerCase().trim());
+  // Paridade com o motor: minúsculas + sem acentos
+  const norm = (s: string) =>
+    s
+      .toLowerCase()
+      .trim()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "");
+  const msg = norm(message);
+  const vals = values.map((v) => norm(v));
 
   switch (operator) {
     case "equals":
