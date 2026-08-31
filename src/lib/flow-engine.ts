@@ -726,6 +726,23 @@ export class FlowEngine {
           const askMsg = pixConfig.trustAskMessage || `Qual valor gostaria de contribuir? (R$${pixConfig.trustMinAmount || 10}-R$${pixConfig.trustMaxAmount || 20})`;
           await evolutionClient.sendText({ number: session.customerPhone, text: askMsg });
         }
+
+        // Reforços de contribuição: 1º após trustReminderMinutes, depois a
+        // cada 3h (máx 3) enquanto a contribuição não chegar
+        try {
+          const nudgeMsg = pixConfig.trustReminderMessage || "Oi! 😊 O material te ajudou? Se puder contribuir com qualquer valor, sua boa-fé mantém esse projeto vivo! 🙏";
+          const nudgeMin = pixConfig.trustReminderMinutes || 60;
+          const { flowTimeoutQueue } = await import("./queue");
+          await flowTimeoutQueue.add(
+            "trust-reminder",
+            { sessionId: session.id, nudge: 1, message: nudgeMsg },
+            { delay: nudgeMin * 60 * 1000, jobId: `trust-reminder-${session.id}-1` }
+          );
+          console.log(`[TRUST] contribution nudge scheduled in ${nudgeMin}min for session ${session.id?.slice(-8)}`);
+        } catch (err: any) {
+          console.error(`[TRUST] failed to schedule nudge: ${err.message}`);
+        }
+
         console.log(`[TRUST] trust keyword matched for session ${session.id?.slice(-8)}, delivered + asking amount`);
         return { action: "continue_session", session: { ...session, status: "waiting_pix", variables: allVars } };
       }

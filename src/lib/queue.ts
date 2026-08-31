@@ -111,6 +111,56 @@ export const timeoutWorker = new Worker(
       return;
     }
 
+    // Reforço de contribuição do módulo confiança (repetido até 3x)
+    if (job.name === "trust-reminder") {
+      const { nudge = 1, message: nudgeMsg } = job.data;
+      const { default: prisma } = await import("./prisma");
+      const session = await prisma.flowSession.findUnique({
+        where: { id: sessionId },
+        include: { tenant: true },
+      });
+      if (!session || session.status !== "waiting_pix") return;
+      const vars = (session.variables || {}) as Record<string, string>;
+      if (vars["_trustMode"] !== "asking_amount") return;
+      // Só reforça enquanto a contribuição não foi feita
+      const trustSale = await prisma.sale.findFirst({
+        where: { sessionId, status: "PENDING" },
+        select: { id: true },
+      });
+      if (!trustSale) return;
+
+      const { getTenantInstance } = await import("./evolution-webhook");
+      const { EvolutionClient } = await import("./evolution");
+      const waUrl =
+        session.tenant?.evolutionUrl ||
+        process.env.EZFLOW_WA_URL ||
+        "http://evolution:8080";
+      const waKey =
+        session.tenant?.evolutionApikey ||
+        process.env.EZFLOW_WA_KEY ||
+        process.env.EVOLUTION_API_KEY ||
+        "ezflow-master-key";
+      const evo = new EvolutionClient({
+        baseUrl: waUrl,
+        apikey: waKey,
+        instance: await getTenantInstance(session.tenantId),
+      });
+      await evo.sendText({ number: session.customerPhone, text: nudgeMsg });
+      console.log(`[TRUST-NUDGE] sent ${nudge}/3 for session ${sessionId?.slice(-8)}`);
+
+      if (nudge < 3) {
+        await flowTimeoutQueue.add(
+          "trust-reminder",
+          { sessionId, nudge: nudge + 1, message: nudgeMsg },
+          {
+            delay: 3 * 3600 * 1000,
+            jobId: `trust-reminder-${sessionId}-${nudge + 1}`,
+          }
+        );
+      }
+      return;
+    }
+
     // Retomada de DELAY (grafo): só continua se a sessão ainda espera esse step
     if (job.name === "delay") {
       const { stepId, toStepId } = job.data;

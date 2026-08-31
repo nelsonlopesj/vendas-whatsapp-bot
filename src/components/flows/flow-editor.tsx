@@ -1508,6 +1508,32 @@ function StepConfigPanel({
             />
 
             <label className="block text-xs font-medium mb-1">
+              Reforço de contribuição — primeiro após (minutos)
+            </label>
+            <input
+              type="number"
+              value={config.trustReminderMinutes || 60}
+              onChange={(e) =>
+                onUpdateConfig({
+                  trustReminderMinutes: parseInt(e.target.value) || 60,
+                })
+              }
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm mb-2"
+            />
+            <label className="block text-xs font-medium mb-1">
+              Mensagem de reforço (repetida até 3x)
+            </label>
+            <textarea
+              value={config.trustReminderMessage || ""}
+              onChange={(e) =>
+                onUpdateConfig({ trustReminderMessage: e.target.value })
+              }
+              rows={2}
+              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none mb-2"
+              placeholder="Oi! 😊 O material te ajudou? Se puder contribuir com qualquer valor, sua boa-fé mantém esse projeto vivo! 🙏"
+            />
+
+            <label className="block text-xs font-medium mb-1">
               Mensagem se valor inválido
             </label>
             <input
