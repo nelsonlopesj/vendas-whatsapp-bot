@@ -122,12 +122,13 @@ export const timeoutWorker = new Worker(
       if (!session || session.status !== "waiting_pix") return;
       const vars = (session.variables || {}) as Record<string, string>;
       if (vars["_trustMode"] !== "asking_amount") return;
-      // Só reforça enquanto a contribuição não foi feita
-      const trustSale = await prisma.sale.findFirst({
-        where: { sessionId, status: "PENDING" },
+      // Só reforça enquanto a contribuição NÃO foi feita (sem venda PAID do
+      // confiança nesta sessão — durante a espera do valor não há venda ainda)
+      const paidTrust = await prisma.sale.findFirst({
+        where: { sessionId, status: "PAID" },
         select: { id: true },
       });
-      if (!trustSale) return;
+      if (paidTrust) return;
 
       const { getTenantInstance } = await import("./evolution-webhook");
       const { EvolutionClient } = await import("./evolution");

@@ -138,6 +138,7 @@ export class MercadoPagoClient {
     description: string;
     expirationMinutes?: number;
     externalReference?: string;
+    allowCard?: boolean;
   }): Promise<string> {
     const expirationDate = new Date(
       Date.now() + (params.expirationMinutes || 30) * 60 * 1000
@@ -151,11 +152,15 @@ export class MercadoPagoClient {
         currency_id: "BRL",
       }],
       payment_methods: {
-        excluded_payment_types: [
-          { id: "credit_card" },
-          { id: "debit_card" },
-          { id: "ticket" },
-        ],
+        // allowCard: checkout oferece cartão de crédito + PIX
+        // (sem cartão, só PIX; boleto fica sempre fora do checkout)
+        excluded_payment_types: params.allowCard
+          ? [{ id: "ticket" }]
+          : [
+              { id: "credit_card" },
+              { id: "debit_card" },
+              { id: "ticket" },
+            ],
       },
       // external_reference permite casar o pagamento do link com a venda
       // (o webhook traz o id do pagamento do checkout, diferente do PIX)

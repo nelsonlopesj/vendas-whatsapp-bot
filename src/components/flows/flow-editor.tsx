@@ -1382,6 +1382,20 @@ function StepConfigPanel({
             <p className="text-xs text-muted-foreground mt-1">
               Com InfinitePay o link é sempre usado (não há código PIX)
             </p>
+            <div className="flex items-center gap-2 mt-2">
+              <input
+                type="checkbox"
+                id="linkCard"
+                checked={config.linkCard === true}
+                onChange={(e) =>
+                  onUpdateConfig({ linkCard: e.target.checked })
+                }
+                className="rounded border-input"
+              />
+              <label htmlFor="linkCard" className="text-xs font-medium">
+                Aceitar cartão de crédito no link (além do PIX)
+              </label>
+            </div>
           </div>
           <div className="border-t border-border pt-3 mt-3">
             <label className="block text-xs font-semibold mb-2">

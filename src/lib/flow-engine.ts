@@ -300,6 +300,7 @@ async function generateTrustPix(
           description,
           expirationMinutes: config.expirationMinutes || 30,
           externalReference: trustLinkRef,
+          allowCard: !!config.linkCard,
         });
         if (linkUrl) {
           await evolutionClient.sendText({
@@ -1351,6 +1352,7 @@ export class FlowEngine {
                     description,
                     expirationMinutes: config.expirationMinutes || 30,
                     externalReference: linkRef,
+                    allowCard: !!config.linkCard,
                   })) || "";
               }
             } catch (err: any) {
