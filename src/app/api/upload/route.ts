@@ -1,11 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { writeFile, mkdir } from "fs/promises";
-import path from "path";
-import crypto from "crypto";
+import { parseAndSaveUpload } from "@/lib/upload-server";
 
-export const maxDuration = 120; // 2 minutos pra uploads grandes
+export const maxDuration = 300; // uploads grandes podem demorar
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -14,63 +12,32 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const formData = await req.formData();
-    const file = formData.get("file") as File;
+    const result = await parseAndSaveUpload(
+      req.body,
+      req.headers.get("content-type") || ""
+    );
 
-    if (!file) {
-      return NextResponse.json(
-        { error: "Nenhum arquivo enviado" },
-        { status: 400 }
-      );
-    }
-
-    // Size limit: 100MB (vídeos do WhatsApp podem passar de 50MB)
-    if (file.size > 100 * 1024 * 1024) {
-      return NextResponse.json(
-        { error: "Arquivo muito grande (máx 100MB)" },
-        { status: 400 }
-      );
-    }
-
-    // Whitelist de extensão: produtos digitais seguros (PDF, áudio, vídeo,
-    // imagem). Bloqueia svg/html/js (XSS armazenado no mesmo domínio)
-    const ALLOWED_EXT = new Set([
-      ".pdf", ".mp3", ".m4a", ".ogg", ".wav",
-      ".mp4", ".mov", ".avi", ".m4v", ".mkv", ".webm", ".3gp",
-      ".jpg", ".jpeg", ".png", ".gif", ".webp",
-    ]);
-    const ext = path.extname(file.name).toLowerCase();
-    if (!ALLOWED_EXT.has(ext)) {
-      return NextResponse.json(
-        { error: `Tipo de arquivo não permitido (${ext || "sem extensão"}). Use PDF, áudio, vídeo ou imagem.` },
-        { status: 400 }
-      );
-    }
-
-    const bytes = await file.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
-    // Generate unique filename
-    const filename = `${crypto.randomUUID()}${ext}`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads");
-
-    // Ensure directory exists
-    await mkdir(uploadDir, { recursive: true });
-
-    // Write file
-    const filePath = path.join(uploadDir, filename);
-    await writeFile(filePath, buffer);
-
-    const url = `/uploads/${filename}`;
-
-    return NextResponse.json({ url, filename, originalName: file.name, size: file.size }, { status: 201 });
-  } catch (error) {
-    console.error("Upload error:", error);
-    // detail exposto na resposta (rota autenticada): permite diagnóstico
-    // rápido de falhas de upload grandes sem abrir o log do container
     return NextResponse.json(
-      { error: "Erro ao processar upload", detail: String(error) },
-      { status: 500 }
+      {
+        url: result.url,
+        filename: result.filename,
+        originalName: result.originalName,
+        size: result.size,
+      },
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error("Upload error:", error);
+    const detail = String(error?.message || error);
+    // Erros de validação do cliente = 400; o resto = 500
+    const isClientError =
+      detail.includes("não permitido") ||
+      detail.includes("muito grande") ||
+      detail.includes("multipart") ||
+      detail.includes("Corpo da requisição");
+    return NextResponse.json(
+      { error: "Erro ao processar upload", detail },
+      { status: isClientError ? 400 : 500 }
     );
   }
 }

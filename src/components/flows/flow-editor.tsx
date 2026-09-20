@@ -1199,7 +1199,15 @@ function StepConfigPanel({
               </div>
             )}
             {fileUploadError && <p className="text-xs text-red-500 mt-1">{fileUploadError}</p>}
-            {config.fileUrl && <p className="text-xs text-green-600 mt-1">✅ Arquivo enviado: {config.fileUrl.split("/").pop()}</p>}
+            {config.fileUrl && (
+              config.fileUrl.startsWith("/uploads/") ? (
+                <p className="text-xs text-green-600 mt-1">✅ Arquivo enviado: {config.fileUrl.split("/").pop()}</p>
+              ) : (
+                <p className="text-xs text-amber-600 mt-1">
+                  ⚠️ URL configurada: {config.fileUrl} — se for um placeholder, faça o upload do arquivo acima para substituí-la.
+                </p>
+              )
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium mb-1 mt-2">
