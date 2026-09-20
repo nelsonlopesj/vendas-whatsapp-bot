@@ -175,7 +175,7 @@ async function sendProductFiles(session: any, phone: string, evolutionClient: Ev
       } catch {}
     }
     const ext = (f.url.split(".").pop() || "").toLowerCase();
-    const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov"].includes(ext) ? "video" : ["jpg","jpeg","png","gif","webp"].includes(ext) ? "image" : "document";
+    const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov","m4v"].includes(ext) ? "video" : ["jpg","jpeg","png","gif","webp"].includes(ext) ? "image" : "document";
     try {
       await evolutionClient.sendMedia({ number: phone, mediaType: type as any, mediaUrl, fileName: f.name, caption: `📎 ${f.name}` });
     } catch (err: any) { console.error(`[TRUST] sendFile failed for ${f.name}:`, err.message); }
@@ -1531,7 +1531,7 @@ export class FlowEngine {
         // Enviar arquivo(s)
         const sendOne = async (url: string, name: string) => {
           const ext = (url.split(".").pop() || "").toLowerCase();
-          const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov"].includes(ext) ? "video" : ["jpg","jpeg","png","gif"].includes(ext) ? "image" : "document";
+          const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov","m4v"].includes(ext) ? "video" : ["jpg","jpeg","png","gif"].includes(ext) ? "image" : "document";
           console.log(`[DELIVER] sending ${type} file: ${url} (${name})`);
 
           // Se é arquivo local (/uploads/...), converte pra base64
@@ -1543,7 +1543,7 @@ export class FlowEngine {
               const filePath = path.join(process.cwd(), "public", url);
               const buffer = await fs.readFile(filePath);
               const b64 = buffer.toString("base64");
-              const mimeMap: Record<string, string> = { pdf: "application/pdf", mp3: "audio/mpeg", m4a: "audio/mp4", ogg: "audio/ogg", wav: "audio/wav", mp4: "video/mp4", mov: "video/quicktime", avi: "video/x-msvideo", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp" };
+              const mimeMap: Record<string, string> = { pdf: "application/pdf", m4v: "video/mp4", mp3: "audio/mpeg", m4a: "audio/mp4", ogg: "audio/ogg", wav: "audio/wav", mp4: "video/mp4", mov: "video/quicktime", avi: "video/x-msvideo", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp" };
               const mimeType = mimeMap[ext] || "application/octet-stream";
               mediaUrl = b64;
               console.log(`[DELIVER] converted ${url} to base64 (${(buffer.length/1024).toFixed(0)}KB)`);
@@ -1633,7 +1633,7 @@ export class FlowEngine {
         const caption = config.caption || "";
         const fileName = config.fileName || fileUrl.split("/").pop() || "arquivo";
         const ext = (fileUrl.split(".").pop() || "").toLowerCase();
-        const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov"].includes(ext) ? "video" : ["jpg","jpeg","png","gif","webp"].includes(ext) ? "image" : "document";
+        const type = ["mp3","m4a","ogg","wav"].includes(ext) ? "audio" : ["mp4","avi","mov","m4v"].includes(ext) ? "video" : ["jpg","jpeg","png","gif","webp"].includes(ext) ? "image" : "document";
 
         if (fileUrl) {
           let mediaUrl = fileUrl;

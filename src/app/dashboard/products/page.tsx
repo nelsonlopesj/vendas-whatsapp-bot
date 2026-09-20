@@ -87,7 +87,7 @@ export default function ProductsPage() {
       setEditForm({ ...editForm, fileUrl: url });
       setUploadMsg("✅ Arquivo enviado!");
       setTimeout(() => setUploadMsg(""), 2000);
-    } catch { setUploadMsg("❌ Erro ao enviar arquivo"); }
+    } catch (err: any) { setUploadMsg(`❌ ${err?.message || "Erro ao enviar arquivo"}`); }
     setUploadPercent(null);
     setUploadingFile(false);
   };
@@ -108,7 +108,7 @@ export default function ProductsPage() {
       }
       setUploadMsg("✅ Arquivos enviados!");
       setTimeout(() => setUploadMsg(""), 2000);
-    } catch { setUploadMsg("❌ Erro ao enviar arquivo"); }
+    } catch (err: any) { setUploadMsg(`❌ ${err?.message || "Erro ao enviar arquivo"}`); }
     setUploadPercent(null);
     setUploadingFile(false);
   };

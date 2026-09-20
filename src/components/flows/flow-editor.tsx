@@ -1156,7 +1156,7 @@ function StepConfigPanel({
             </label>
             <input
               type="file"
-              accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.avi,.mp3,.m4a,.ogg,.wav"
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.avi,.m4v,.mkv,.webm,.3gp,.mp3,.m4a,.ogg,.wav"
               disabled={fileUploadProgress !== null}
               onChange={async (e) => {
                 const file = e.target.files?.[0];
@@ -1166,8 +1166,8 @@ function StepConfigPanel({
                 try {
                   const data = await uploadFileWithProgress(file, (p) => setFileUploadProgress(p));
                   if (data.url) onUpdateConfig({ fileUrl: data.url, fileName: data.originalName || file.name });
-                } catch {
-                  setFileUploadError("Erro ao enviar o arquivo. Tente novamente.");
+                } catch (err: any) {
+                  setFileUploadError(err?.message || "Erro ao enviar o arquivo. Tente novamente.");
                 } finally {
                   setFileUploadProgress(null);
                 }

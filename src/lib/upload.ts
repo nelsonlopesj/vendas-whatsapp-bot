@@ -27,7 +27,14 @@ export function uploadFileWithProgress(
           reject(new Error("Resposta inválida do servidor"));
         }
       } else {
-        reject(new Error(`Upload falhou (${xhr.status})`));
+        // Propaga a mensagem de erro real do servidor (ex: tipo não
+        // permitido, arquivo grande) em vez de um erro genérico.
+        let msg = `Erro no servidor (HTTP ${xhr.status})`;
+        try {
+          const body = JSON.parse(xhr.responseText);
+          if (body?.error) msg = body.error;
+        } catch {}
+        reject(new Error(msg));
       }
     };
 

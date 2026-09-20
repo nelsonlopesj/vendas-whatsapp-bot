@@ -24,10 +24,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Size limit: 50MB
-    if (file.size > 50 * 1024 * 1024) {
+    // Size limit: 100MB (vídeos do WhatsApp podem passar de 50MB)
+    if (file.size > 100 * 1024 * 1024) {
       return NextResponse.json(
-        { error: "Arquivo muito grande (máx 50MB)" },
+        { error: "Arquivo muito grande (máx 100MB)" },
         { status: 400 }
       );
     }
@@ -36,7 +36,8 @@ export async function POST(req: NextRequest) {
     // imagem). Bloqueia svg/html/js (XSS armazenado no mesmo domínio)
     const ALLOWED_EXT = new Set([
       ".pdf", ".mp3", ".m4a", ".ogg", ".wav",
-      ".mp4", ".mov", ".avi", ".jpg", ".jpeg", ".png", ".gif", ".webp",
+      ".mp4", ".mov", ".avi", ".m4v", ".mkv", ".webm", ".3gp",
+      ".jpg", ".jpeg", ".png", ".gif", ".webp",
     ]);
     const ext = path.extname(file.name).toLowerCase();
     if (!ALLOWED_EXT.has(ext)) {
