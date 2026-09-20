@@ -55,21 +55,9 @@ Na prática, funciona assim:
 
 ## 🎬 Vídeos passo a passo
 
-Prefere assistir? Cada configuração tem um vídeo curto — assista só o que precisar:
+Prefere assistir? Cada configuração tem um vídeo curto — assista só o que precisar. A lista de vídeos é atualizada pela equipe sempre que necessário, sem mudar nada na página.
 
-| # | Vídeo | O que mostra |
-|---|-------|--------------|
-| 1 | Criando sua conta na EZFlow | Cadastro e os 7 dias grátis |
-| 2 | Conectando seu WhatsApp (QR Code) | O escaneamento do QR Code em 30 segundos |
-| 3 | Criando sua conta no Mercado Pago | Conta gratuita + confirmação de identidade |
-| 4 | Copiando o Access Token | Onde achar a chave de acesso (APP_USR-…) |
-| 5 | Colando o token na EZFlow | WhatsApp & PIX → Mercado Pago → Salvar |
-| 6 | Importando um template pronto | Templates grátis com 1 clique |
-| 7 | Cadastrando seu produto digital | Nome, preço e upload do arquivo |
-| 8 | Ligando o produto ao fluxo e ativando | Gerar PIX + Entrega + ativar |
-| 9 | Testando e acompanhando vendas | Teste completo + páginas de Vendas e Relatórios |
-
-> ✨ **Precisa de algo mais detalhado ou avançado** — fluxos sob medida, estratégias de venda, configurações especiais? Fale direto com o Nelson: **[número do Nelson]**
+> ✨ **Precisa de algo mais detalhado ou avançado** — fluxos sob medida, estratégias de venda, configurações especiais? Fale direto com o Nelson: **(11) 95248-2267**
 
 ---
 
@@ -239,7 +227,7 @@ A assinatura da EZFlow inclui o uso completo da plataforma: fluxos ilimitados de
 **Construção de fluxos personalizados** — se você quiser um fluxo sob medida, desenhado pela nossa equipe para o seu produto (mensagens, estratégia de venda, módulo de confiança, remarketing...), esse serviço é **cobrado à parte**, conforme a complexidade.
 
 Para contratar, tirar dúvidas ou pedir ajuda:
-**WhatsApp: [número do Nelson]**
+**WhatsApp: (11) 95248-2267**
 
 ---
 
