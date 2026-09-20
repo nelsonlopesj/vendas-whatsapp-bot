@@ -76,6 +76,9 @@ Este passo faz o robô "morar" dentro do seu WhatsApp. Leva 30 segundos.
 
 O robô sabe conversar — mas quem **gera o código PIX** e **avisa quando o pagamento caiu** é o Mercado Pago. A EZFlow se conecta a ele por um "token" (uma chave de acesso). Você só precisa criar a conta uma vez e colar essa chave na plataforma.
 
+> ✅ **Você só precisa de UMA coisa: o Access Token.**
+> **Não** é preciso criar aplicação/integração no Mercado Pago, **nem** configurar webhook, **nem** copiar endereços de URL. A EZFlow confirma o pagamento sozinha: consulta o Mercado Pago automaticamente a cada 30 segundos até o PIX cair. O token faz todo o trabalho.
+
 ### 3.1 — Criar sua conta no Mercado Pago (grátis)
 
 1. Baixe o aplicativo **Mercado Pago** no celular, ou acesse **https://mercadopago.com.br** no computador.
