@@ -83,6 +83,7 @@ model Flow {
   triggerKeyword String     // "colorir" — palavra que ativa este fluxo
   triggerMode    String     @default("contains") // contains | exact | regex
   isActive       Boolean    @default(true)
+  hidden         Boolean    @default(false) // Fluxo interno: não aparece no menu automático de produtos
   welcomeMessage String?    // Mensagem de boas-vindas (opcional, usa step 1 se não tiver)
   steps          FlowStep[]
   sessions       FlowSession[]

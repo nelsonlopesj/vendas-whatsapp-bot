@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
             noMatchMenuAt.set(menuKey, Date.now());
             try {
               const flows = await prisma.flow.findMany({
-                where: { tenantId: tenant.id, isActive: true },
+                where: { tenantId: tenant.id, isActive: true, hidden: false },
                 orderBy: { createdAt: "asc" },
                 select: { name: true, triggerKeyword: true },
               });

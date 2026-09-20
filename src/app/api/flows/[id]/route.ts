@@ -59,7 +59,7 @@ export async function PUT(
   }
 
   try {
-    const { name, triggerKeyword, triggerMode, isActive, steps } =
+    const { name, triggerKeyword, triggerMode, isActive, hidden, steps } =
       await req.json();
 
     await prisma.flow.update({
@@ -69,6 +69,7 @@ export async function PUT(
         triggerKeyword: triggerKeyword || existing.triggerKeyword,
         triggerMode: triggerMode || existing.triggerMode,
         isActive: isActive !== undefined ? isActive : existing.isActive,
+        hidden: hidden !== undefined ? hidden : existing.hidden,
       },
     });
 

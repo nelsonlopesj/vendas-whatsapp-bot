@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { name, triggerKeyword, triggerMode, steps } = await req.json();
+    const { name, triggerKeyword, triggerMode, hidden, steps } = await req.json();
 
     // Verificar assinatura
     const { canCreateFlow } = await import("@/lib/subscription");
@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
         name,
         triggerKeyword: triggerKeyword.toLowerCase().trim(),
         triggerMode: triggerMode || "contains",
+        hidden: hidden === true,
         steps: {
           create: (steps || []).map((step: any, index: number) => ({
             order: index + 1,

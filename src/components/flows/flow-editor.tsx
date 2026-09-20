@@ -149,6 +149,7 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
   const [flowName, setFlowName] = useState("Novo Fluxo");
   const [triggerKeyword, setTriggerKeyword] = useState("");
   const [triggerMode, setTriggerMode] = useState("contains");
+  const [hidden, setHidden] = useState(false);
   const [steps, setSteps] = useState<FlowStep[]>([]);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -189,6 +190,7 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
           setFlowName(data.flow.name);
           setTriggerKeyword(data.flow.triggerKeyword);
           setTriggerMode(data.flow.triggerMode);
+          setHidden(data.flow.hidden === true);
           const loaded = (data.flow.steps || []).map((s: any) => ({
             id: s.id,
             type: s.type,
@@ -398,6 +400,7 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
         name: flowName,
         triggerKeyword,
         triggerMode,
+        hidden,
         steps: steps.map((s) => {
           const edges = Array.isArray(s.config?.outgoingEdges)
             ? (s.config.outgoingEdges as any[])
@@ -570,6 +573,15 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
                 <option value="regex">Regex</option>
               </select>
             </div>
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hidden}
+                onChange={(e) => setHidden(e.target.checked)}
+                className="accent-primary"
+              />
+              Fluxo interno — não aparece no menu de produtos enviado a quem digita algo fora das keywords
+            </label>
           </div>
 
           <div className="flex items-center gap-2">

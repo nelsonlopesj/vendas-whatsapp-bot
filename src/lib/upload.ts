@@ -33,6 +33,7 @@ export function uploadFileWithProgress(
         try {
           const body = JSON.parse(xhr.responseText);
           if (body?.error) msg = body.error;
+          if (body?.detail) msg += ` (${String(body.detail).slice(0, 200)})`;
         } catch {}
         reject(new Error(msg));
       }
