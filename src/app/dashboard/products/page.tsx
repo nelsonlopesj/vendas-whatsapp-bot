@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Plus, Package, Trash2, Pencil, DollarSign, Hash, X, Save, EyeOff, Eye, Upload } from "lucide-react";
+import { uploadFileWithProgress } from "@/lib/upload";
 
 interface Product {
   id: string;
@@ -64,28 +65,30 @@ export default function ProductsPage() {
     setEditExtraFiles(extras);
   };
 
-  const uploadFile = async (file: File): Promise<string> => {
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetch("/api/upload", { method: "POST", body: form });
-    if (!res.ok) throw new Error("Upload failed");
-    const data = await res.json();
+  const uploadFile = async (file: File, onProgress?: (p: number) => void): Promise<string> => {
+    const data = await uploadFileWithProgress(file, onProgress);
     return data.url;
   };
 
   const [uploadMsg, setUploadMsg] = useState("");
+  const [uploadPercent, setUploadPercent] = useState<number | null>(null);
 
   const handleMainFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploadingFile(true);
+    setUploadPercent(0);
     setUploadMsg(`Enviando ${file.name} (${(file.size/1024/1024).toFixed(1)}MB)...`);
     try {
-      const url = await uploadFile(file);
+      const url = await uploadFile(file, (p) => {
+        setUploadPercent(p);
+        setUploadMsg(`Enviando ${file.name}... ${p}%`);
+      });
       setEditForm({ ...editForm, fileUrl: url });
       setUploadMsg("✅ Arquivo enviado!");
       setTimeout(() => setUploadMsg(""), 2000);
     } catch { setUploadMsg("❌ Erro ao enviar arquivo"); }
+    setUploadPercent(null);
     setUploadingFile(false);
   };
 
@@ -93,15 +96,20 @@ export default function ProductsPage() {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     setUploadingFile(true);
+    setUploadPercent(0);
     try {
       for (const file of files) {
         setUploadMsg(`Enviando ${file.name}...`);
-        const url = await uploadFile(file);
+        const url = await uploadFile(file, (p) => {
+          setUploadPercent(p);
+          setUploadMsg(`Enviando ${file.name}... ${p}%`);
+        });
         setEditExtraFiles(prev => [...prev, { url, name: file.name }]);
       }
       setUploadMsg("✅ Arquivos enviados!");
       setTimeout(() => setUploadMsg(""), 2000);
     } catch { setUploadMsg("❌ Erro ao enviar arquivo"); }
+    setUploadPercent(null);
     setUploadingFile(false);
   };
 
@@ -240,6 +248,16 @@ export default function ProductsPage() {
                   className="w-full text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary file:text-primary-foreground hover:file:opacity-80" />
                 <p className="text-xs text-muted-foreground mt-1">Adicione ou remova arquivos. O upload substitui o anterior.</p>
               </div>
+              {uploadPercent !== null && (
+                <div>
+                  <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{ width: `${uploadPercent}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               {uploadMsg && <p className={`text-xs ${uploadMsg.startsWith("✅") ? "text-green-500" : uploadMsg.startsWith("❌") ? "text-red-500" : "text-blue-500"}`}>{uploadMsg}</p>}
               <button onClick={saveEdit} disabled={saving || uploadingFile} className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground px-4 py-2.5 rounded-xl text-sm font-medium hover:opacity-90 disabled:opacity-50">
                 <Save className="w-4 h-4" /> {uploadingFile ? "Aguardando upload..." : saving ? "Salvando..." : "Salvar"}

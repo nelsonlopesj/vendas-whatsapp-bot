@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import { migrateLegacyToGraph, autoLayout, detectUnsafeCycles } from "@/lib/flow-graph";
+import { uploadFileWithProgress } from "@/lib/upload";
 import { FlowCanvas } from "./graph/FlowCanvas";
 
 // Tipos de passo disponíveis
@@ -1003,6 +1004,9 @@ function StepConfigPanel({
   const [products, setProducts] = useState<Array<{ id: string; name: string; price: number; keyword: string }>>([]);
   const [productsLoaded, setProductsLoaded] = useState(false);
   const [expectedRaw, setExpectedRaw] = useState<string | null>(null);
+  // Upload de arquivo (SEND_FILE): null = parado, 0-100 = progresso
+  const [fileUploadProgress, setFileUploadProgress] = useState<number | null>(null);
+  const [fileUploadError, setFileUploadError] = useState<string | null>(null);
   useEffect(() => { fetch("/api/products").then(r => r.json()).then(d => { setProducts(d.products || []); setProductsLoaded(true); }).catch(() => setProductsLoaded(true)); }, []);
   // Sincronizar raw text com config quando muda de step
   useEffect(() => { setExpectedRaw(null); }, [step.id]);
@@ -1148,22 +1152,41 @@ function StepConfigPanel({
         <>
           <div>
             <label className="block text-xs font-medium mb-1">
-              Upload do arquivo (PDF, imagem)
+              Upload do arquivo (PDF, imagem, vídeo ou áudio)
             </label>
             <input
               type="file"
-              accept=".pdf,.jpg,.jpeg,.png,.gif,.webp"
+              accept=".pdf,.jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.avi,.mp3,.m4a,.ogg,.wav"
+              disabled={fileUploadProgress !== null}
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
-                const form = new FormData();
-                form.append("file", file);
-                const res = await fetch("/api/upload", { method: "POST", body: form });
-                const data = await res.json();
-                if (data.url) onUpdateConfig({ fileUrl: data.url, fileName: data.originalName || file.name });
+                setFileUploadError(null);
+                setFileUploadProgress(0);
+                try {
+                  const data = await uploadFileWithProgress(file, (p) => setFileUploadProgress(p));
+                  if (data.url) onUpdateConfig({ fileUrl: data.url, fileName: data.originalName || file.name });
+                } catch {
+                  setFileUploadError("Erro ao enviar o arquivo. Tente novamente.");
+                } finally {
+                  setFileUploadProgress(null);
+                }
+                e.target.value = "";
               }}
               className="w-full text-xs file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-primary file:text-primary-foreground hover:file:opacity-80"
             />
+            {fileUploadProgress !== null && (
+              <div className="mt-2">
+                <div className="w-full h-1.5 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${fileUploadProgress}%` }}
+                  />
+                </div>
+                <p className="text-xs text-blue-500 mt-1">Enviando... {fileUploadProgress}%</p>
+              </div>
+            )}
+            {fileUploadError && <p className="text-xs text-red-500 mt-1">{fileUploadError}</p>}
             {config.fileUrl && <p className="text-xs text-green-600 mt-1">✅ Arquivo enviado: {config.fileUrl.split("/").pop()}</p>}
           </div>
           <div>
