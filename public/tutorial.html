@@ -716,11 +716,12 @@
     li.addEventListener("click", function () { li.classList.toggle("done"); });
   });
 
-  // Vídeos: lista dinâmica lida do manifesto /uploads/videos-tutorial.json
-  // (a equipe edita o JSON no servidor — sem deploy, sem mexer na página)
-  fetch("/uploads/videos-tutorial.json")
-    .then(function (r) { if (!r.ok) throw new Error("sem manifesto"); return r.json(); })
-    .then(function (list) {
+  // Vídeos: lista dinâmica vinda da API (gerenciada pelo admin master —
+  // ezflow.com.br/dashboard/admin/tutorial-videos)
+  fetch("/api/tutorial-videos")
+    .then(function (r) { if (!r.ok) throw new Error("sem vídeos"); return r.json(); })
+    .then(function (data) {
+      var list = data.videos || [];
       var section = document.getElementById("videos");
       var grid = document.getElementById("videoGrid");
       if (!Array.isArray(list) || list.length === 0) { section.style.display = "none"; return; }

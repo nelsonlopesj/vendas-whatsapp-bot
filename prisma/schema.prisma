@@ -214,3 +214,13 @@ model VerificationToken {
 
   @@unique([identifier, token])
 }
+
+// ===== VÍDEOS DO TUTORIAL (conteúdo global, gerenciado pelo master) =====
+model TutorialVideo {
+  id        String   @id @default(cuid())
+  title     String   // Título exibido no card do guia
+  fileUrl   String   // /uploads/xxx.mp4
+  order     Int      @default(0) // Ordem de exibição
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

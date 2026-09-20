@@ -15,6 +15,7 @@ import {
   X,
   Zap,
   Users,
+  Film,
 } from "lucide-react";
 import { useState } from "react";
 import { clsx } from "clsx";
@@ -45,6 +46,7 @@ const navItems = [
     section: "Master",
     items: [
       { href: "/dashboard/admin", label: "Admin — Clientes", icon: Users },
+      { href: "/dashboard/admin/tutorial-videos", label: "Vídeos do Tutorial", icon: Film },
     ],
     ownerOnly: true,
   },
