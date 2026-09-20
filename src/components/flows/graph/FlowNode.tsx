@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import { Handle, Position, NodeProps } from "@xyflow/react";
+import { Trash2 } from "lucide-react";
 import clsx from "clsx";
 import { ConditionRoute } from "@/lib/flow-types";
 
@@ -38,13 +39,14 @@ function FlowNodeInner({ data, selected }: NodeProps) {
   const step = (data as any)?.step;
   // typeDef vem do canvas (evita dependência circular com o editor)
   const typeDef = (data as any)?.typeDef;
+  const onDelete = (data as any)?.onDelete as ((id: string) => void) | undefined;
   const Icon = typeDef?.icon || null;
   const ports = step ? getStepPorts(step) : [];
 
   return (
     <div
       className={clsx(
-        "w-60 rounded-xl border-2 bg-card shadow-sm transition-shadow",
+        "group w-60 rounded-xl border-2 bg-card shadow-sm transition-shadow",
         selected ? "border-primary ring-2 ring-primary/20" : "border-border"
       )}
     >
@@ -55,10 +57,22 @@ function FlowNodeInner({ data, selected }: NodeProps) {
             <Icon className={clsx("w-3.5 h-3.5", typeDef?.colorText)} />
           </div>
         )}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold truncate">{step?.label}</p>
           <p className="text-[10px] text-muted-foreground">{typeDef?.label}</p>
         </div>
+        {onDelete && step && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(step.id);
+            }}
+            className="p-1 rounded opacity-60 group-hover:opacity-100 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-opacity"
+            title="Remover caixinha (ou tecle Delete)"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
       {step?.config?.text && (
         <p className="px-3 py-2 text-[11px] text-muted-foreground line-clamp-2">

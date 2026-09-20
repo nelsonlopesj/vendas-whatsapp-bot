@@ -41,6 +41,7 @@ interface FlowCanvasProps {
   onMoveStep: (id: string, x: number, y: number) => void;
   onConnectEdge: (fromId: string, port: string, toId: string) => void;
   onRemoveEdge: (edgeId: string) => void;
+  onDeleteStep: (id: string) => void;
 }
 
 const nodeTypes = { flow: FlowNode };
@@ -54,6 +55,7 @@ function FlowCanvasInner({
   onMoveStep,
   onConnectEdge,
   onRemoveEdge,
+  onDeleteStep,
 }: FlowCanvasProps) {
   const { screenToFlowPosition } = useReactFlow();
 
@@ -67,9 +69,10 @@ function FlowCanvasInner({
           step: s,
           selected: s.id === selectedStepId,
           typeDef: stepTypes.find((t) => t.type === s.type),
+          onDelete: onDeleteStep,
         },
       })),
-    [steps, selectedStepId, stepTypes]
+    [steps, selectedStepId, stepTypes, onDeleteStep]
   );
 
   const edges: Edge[] = useMemo(() => {
@@ -138,6 +141,10 @@ function FlowCanvasInner({
         onNodeDragStop={onNodeDragStop}
         onNodeClick={(_, node) => onSelectStep(node.id)}
         onPaneClick={() => onSelectStep(null)}
+        deleteKeyCode={["Backspace", "Delete"]}
+        onNodesDelete={(deleted) =>
+          deleted.forEach((n) => onDeleteStep(n.id))
+        }
         onEdgesDelete={(deleted) =>
           deleted.forEach((e) => onRemoveEdge(e.id))
         }
