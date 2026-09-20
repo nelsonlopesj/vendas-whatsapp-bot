@@ -17,4 +17,4 @@ EXPOSE 3000
 # db push no boot: aplica colunas novas do schema automaticamente
 # (evita quebra de páginas quando o banco está atrasado em relação ao código)
 # Melhor-esforço: se falhar, loga em /tmp/dbpush.log e o app sobe mesmo assim
-CMD ["sh", "-c", "npx prisma db push --skip-generate --accept-data-loss > /tmp/dbpush.log 2>&1 || echo 'db push skipped (see /tmp/dbpush.log)'; npm start"]
+CMD ["sh", "-c", "for i in 1 2 3 4 5; do echo \"[boot] db push tentativa $i\"; npx prisma db push --skip-generate --accept-data-loss >> /tmp/dbpush.log 2>&1 && break; sleep 3; done; tail -5 /tmp/dbpush.log; npm start"]

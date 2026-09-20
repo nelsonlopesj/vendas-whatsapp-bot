@@ -28,6 +28,7 @@ interface Flow {
 export default function FlowsPage() {
   const [flows, setFlows] = useState<Flow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [importing, setImporting] = useState<string | null>(null);
   const [importMsg, setImportMsg] = useState<{
     ok: boolean;
@@ -35,10 +36,22 @@ export default function FlowsPage() {
   } | null>(null);
 
   const fetchFlows = useCallback(async () => {
-    const res = await fetch("/api/flows");
-    const data = await res.json();
-    setFlows(data.flows || []);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const res = await fetch("/api/flows");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !Array.isArray(data.flows)) {
+        setLoadError(
+          data.detail || data.error || `Erro ao carregar fluxos (HTTP ${res.status})`
+        );
+        return;
+      }
+      setFlows(data.flows);
+    } catch (err: any) {
+      setLoadError(err.message || "Erro ao carregar fluxos");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -164,6 +177,14 @@ export default function FlowsPage() {
           }`}
         >
           {importMsg.text}
+        </div>
+      )}
+      {loadError && (
+        <div className="p-4 rounded-lg text-sm bg-destructive/10 text-destructive border border-destructive/20">
+          ⚠️ <b>Não foi possível carregar seus fluxos — mas eles NÃO foram apagados.</b>
+          <br />
+          Isso normalmente indica que o banco de dados está desatualizado em relação
+          ao código (coluna nova pendente). Motivo técnico: {loadError}
         </div>
       )}
 
