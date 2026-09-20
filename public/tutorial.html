@@ -252,6 +252,31 @@
     text-align: center;
   }
 
+  /* ===== Vídeos ===== */
+  .videos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 14px;
+  }
+  .video-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .video-card video {
+    width: 100%;
+    display: block;
+    aspect-ratio: 16 / 9;
+    background: #000;
+  }
+  .video-card p {
+    padding: 9px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 0;
+  }
+
   /* ===== Sumário ===== */
   .toc {
     display: flex;
@@ -483,6 +508,25 @@
       <div class="bubble bot">Aqui estão seus desenhos! 🎨✨ Imprima e aproveite esse momento especial. 🙏<div class="filechip">📎 desenhos-biblicos.pdf</div><span class="time">10:35 ✓✓</span></div>
     </div>
     <p class="demo-note">É isso que um <b>fluxo</b> faz, do começo ao fim — e é você quem monta, sem escrever uma linha de código.</p>
+  </section>
+
+  <section id="videos" style="margin:36px 0 8px">
+    <h2 class="demo-head">🎬 Vídeos passo a passo</h2>
+    <p style="color:var(--muted);font-size:14.5px;margin:0 0 14px">Prefere assistir? Cada configuração tem um vídeo curto — assista só o que precisar, na ordem que quiser.</p>
+    <div class="videos-grid">
+      <div class="video-card"><video controls preload="none" src="/uploads/tutorial-01.mp4"></video><p>1 · Criando sua conta na EZFlow</p></div>
+      <div class="video-card"><video controls preload="none" src="/uploads/tutorial-02.mp4"></video><p>2 · Conectando seu WhatsApp (QR Code)</p></div>
+      <div class="video-card"><video controls preload="none" src="/uploads/tutorial-03.mp4"></video><p>3 · Criando sua conta no Mercado Pago</p></div>
+      <div class="video-card"><video controls preload="none" src="/uploads/tutorial-04.mp4"></video><p>4 · Copiando o Access Token</p></div>
+      <div class="video-card"><video controls preload="none" src="/uploads/tutorial-05.mp4"></video><p>5 · Colando o token na EZFlow</p></div>
+      <div class="video-card"><video controls preload="none" src="/uploads/tutorial-06.mp4"></video><p>6 · Importando um template pronto</p></div>
+      <div class="video-card"><video controls preload="none" src="/uploads/tutorial-07.mp4"></video><p>7 · Cadastrando seu produto digital</p></div>
+      <div class="video-card"><video controls preload="none" src="/uploads/tutorial-08.mp4"></video><p>8 · Ligando o produto ao fluxo e ativando</p></div>
+      <div class="video-card"><video controls preload="none" src="/uploads/tutorial-09.mp4"></video><p>9 · Testando e acompanhando vendas</p></div>
+    </div>
+    <div class="tip" style="margin:16px 0 0">
+      ✨ Precisa de algo <b>mais detalhado ou avançado</b> — fluxos sob medida, estratégias de venda, configurações especiais? Fale direto com o Nelson: <b>[número do Nelson]</b>
+    </div>
   </section>
 
   <nav class="toc" aria-label="Sumário">

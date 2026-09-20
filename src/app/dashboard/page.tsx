@@ -55,6 +55,40 @@ export default async function DashboardPage() {
         <TrialBanner subscriptionStatus={tenant?.subscriptionStatus || "trial"} trialEndsAt={tenant?.trialEndsAt?.toISOString() || null} />
       )}
 
+      {/* Onboarding: conta nova, sem produto nem fluxo ainda */}
+      {totalProducts === 0 && activeFlows === 0 && (
+        <div className="bg-card border border-border rounded-xl p-5">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+            <div>
+              <h2 className="font-semibold">🎉 Bem-vindo! Comece por aqui</h2>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Três passos e seu robô está atendendo no WhatsApp.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 sm:ml-auto">
+              <Link
+                href="/tutorial.html"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-input hover:bg-secondary transition-colors"
+              >
+                📖 Guia passo a passo
+              </Link>
+              <Link
+                href="/tutorial.html#videos"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-input hover:bg-secondary transition-colors"
+              >
+                🎬 Vídeos de configuração
+              </Link>
+              <Link
+                href="/dashboard/settings"
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+              >
+                📱 Conectar WhatsApp
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {stats.map((stat) => (

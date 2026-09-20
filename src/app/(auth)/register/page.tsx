@@ -201,6 +201,17 @@ export default function RegisterPage() {
           </form>
 
           <p className="text-sm text-muted-foreground text-center mt-6">
+            📖 Novo por aqui? Veja o{" "}
+            <Link
+              href="/tutorial.html"
+              className="text-primary font-medium hover:underline"
+            >
+              guia de primeiros passos
+            </Link>{" "}
+            — com vídeos de cada configuração.
+          </p>
+
+          <p className="text-sm text-muted-foreground text-center mt-6">
             Já tem conta?{" "}
             <Link
               href="/login"
