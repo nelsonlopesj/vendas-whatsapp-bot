@@ -534,7 +534,9 @@ export class FlowEngine {
       // (LOOP é exceção: devolve o alvo da porta "back" quando continua o ciclo)
       if (graphStart && result.status === "active" && currentStep.type !== "LOOP") {
         const gNext = resolveOutgoing(flow.steps as any[], currentStep as any, PORT_NEXT);
-        if (gNext) { result.nextStepId = gNext; nextId = gNext; }
+        // Sem aresta "next" = fim do fluxo (nunca cair no fallback por ordem)
+        result.nextStepId = gNext || null;
+        nextId = result.nextStepId;
       }
 
       // Se gerou PIX, pausa para aguardar pagamento
@@ -1071,7 +1073,8 @@ export class FlowEngine {
       // (LOOP é exceção: devolve o alvo da porta "back" quando continua o ciclo)
       if (graph && result.status === "active" && cs.type !== "LOOP") {
         const gNext = resolveOutgoing(steps as any[], cs as any, PORT_NEXT);
-        if (gNext) result.nextStepId = gNext;
+        // Sem aresta "next" = fim do fluxo (nunca cair no fallback por ordem)
+        result.nextStepId = gNext || null;
       }
 
       // Se gerou PIX, salva e pausa para aguardar pagamento
@@ -2214,7 +2217,8 @@ export class FlowEngine {
       // Grafo: próximo passo pela aresta (LOOP é exceção — porta back)
       if (graph && result.status === "active" && cs.type !== "LOOP") {
         const gNext = resolveOutgoing(steps as any[], cs as any, PORT_NEXT);
-        if (gNext) result.nextStepId = gNext;
+        // Sem aresta "next" = fim do fluxo (nunca cair no fallback por ordem)
+        result.nextStepId = gNext || null;
       }
 
       if (result.status === "waiting_pix") {
