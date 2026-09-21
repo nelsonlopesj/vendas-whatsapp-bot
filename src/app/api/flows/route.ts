@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Atualizar nextStepId, altNextStepId e arestas com os IDs reais do banco
+    let brokenEdges = false;
     for (let i = 0; i < (steps || []).length; i++) {
       const step = steps[i];
       const dbStep = flow.steps[i];
@@ -111,10 +112,13 @@ export async function POST(req: NextRequest) {
       const rawEdges = Array.isArray(step.config?.outgoingEdges)
         ? (step.config.outgoingEdges as any[])
         : [];
-      const remappedEdges = rawEdges.map((e: any) => ({
-        ...e,
-        targetStepId: e.targetStepId ? oldToNew[e.targetStepId] || null : null,
-      }));
+      const remappedEdges = rawEdges.map((e: any) => {
+        const mapped = e.targetStepId
+          ? oldToNew[e.targetStepId] || null
+          : null;
+        if (e.targetStepId && !mapped) brokenEdges = true;
+        return { ...e, targetStepId: mapped };
+      });
 
       if (
         nextId ||
@@ -134,6 +138,20 @@ export async function POST(req: NextRequest) {
           },
         });
       }
+    }
+
+    // Arquivo com arestas cujos alvos não puderam ser remapeados (ex: export
+    // antigo do editor, sem ids de passo) → recusa em vez de gravar um grafo
+    // quebrado silenciosamente (o fluxo morreria no primeiro DELAY).
+    if (brokenEdges) {
+      await prisma.flow.delete({ where: { id: flow.id } }).catch(() => {});
+      return NextResponse.json(
+        {
+          error:
+            "Arquivo de fluxo incompatível: os passos não têm ids (export antigo do editor). Use o arquivo original do fluxo, com ids.",
+        },
+        { status: 400 }
+      );
     }
 
     const updated = await prisma.flow.findUnique({

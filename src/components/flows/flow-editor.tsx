@@ -454,6 +454,9 @@ export function FlowEditor({ flowId, tenantId }: FlowEditorProps) {
         const nextEdge = edges.find((e: any) => e.port === "next");
         const altEdge = edges.find((e: any) => e.port === "alt");
         return {
+          // id é OBRIGATÓRIO no export: sem ele, o import não consegue
+          // remapear as arestas (oldToNew fica vazio e os alvos viram null)
+          id: s.id,
           order: i + 1,
           type: s.type,
           label: s.label,
