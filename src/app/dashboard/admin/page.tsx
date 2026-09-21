@@ -5,6 +5,9 @@ import { redirect } from "next/navigation";
 import { Users, CreditCard, Clock, CheckCircle2, XCircle, Sparkles, Trash2, RefreshCw } from "lucide-react";
 import { SessionCleaner } from "./session-cleaner";
 import { FunnelDashboard } from "./funnel-dashboard";
+import { FlowsModal } from "./flows-modal";
+import type { FlowSummary } from "./flows-modal";
+import { PhoneCell } from "./phone-cell";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +20,31 @@ export default async function AdminPage() {
     include: { users: { select: { email: true, name: true, role: true } }, _count: { select: { sales: true, flows: true } } },
     orderBy: { createdAt: "desc" },
   });
+
+  // Fluxos de todos os tenants — drill-down da coluna Fluxos
+  const allFlows = await prisma.flow.findMany({
+    select: {
+      id: true,
+      tenantId: true,
+      name: true,
+      isActive: true,
+      hidden: true,
+      triggerKeyword: true,
+      _count: { select: { steps: true } },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+  const flowsByTenant: Record<string, FlowSummary[]> = {};
+  for (const f of allFlows) {
+    (flowsByTenant[f.tenantId] ||= []).push({
+      id: f.id,
+      name: f.name,
+      isActive: f.isActive,
+      hidden: f.hidden,
+      triggerKeyword: f.triggerKeyword,
+      stepsCount: f._count.steps,
+    });
+  }
 
   const now = new Date();
   const totalTenants = tenants.length;
@@ -73,6 +101,7 @@ export default async function AdminPage() {
               <tr className="border-b border-border bg-muted/30">
                 <th className="text-left px-4 py-3 font-medium">Cliente</th>
                 <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Email</th>
+                <th className="text-left px-4 py-3 font-medium hidden md:table-cell">WhatsApp</th>
                 <th className="text-left px-4 py-3 font-medium">Plano</th>
                 <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">Vendas</th>
                 <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">Fluxos</th>
@@ -95,6 +124,9 @@ export default async function AdminPage() {
                       {isOwner && <span className="ml-2 text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded">MASTER</span>}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{t.users[0]?.email || "-"}</td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      <PhoneCell tenantId={t.id} value={t.whatsappNumber} tenantName={t.name} />
+                    </td>
                     <td className="px-4 py-3">
                       {isOwner ? (
                         <span className="inline-flex items-center gap-1 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full"><Sparkles className="w-3 h-3" /> Master</span>
@@ -103,11 +135,16 @@ export default async function AdminPage() {
                       ) : isExpired ? (
                         <span className="inline-flex items-center gap-1 text-xs bg-red-500/10 text-red-600 px-2 py-0.5 rounded-full"><XCircle className="w-3 h-3" /> Expirado</span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-xs bg-amber-500/10 text-amber-600 px-2 py-0.5 rounded-full"><Clock className="w-3 h-3" /> {daysLeft}d</span>
+                        <span
+                          className="inline-flex items-center gap-1 text-xs bg-amber-500/10 text-amber-600 px-2 py-0.5 rounded-full"
+                          title={t.trialEndsAt ? `Trial — ${daysLeft} dia${daysLeft === 1 ? "" : "s"} restante${daysLeft === 1 ? "" : "s"} (termina em ${new Date(t.trialEndsAt).toLocaleDateString("pt-BR")})` : undefined}
+                        ><Clock className="w-3 h-3" /> {daysLeft}d</span>
                       )}
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell">{t._count.sales}</td>
-                    <td className="px-4 py-3 hidden lg:table-cell">{t._count.flows}</td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <FlowsModal tenantName={t.name} flows={flowsByTenant[t.id] || []} />
+                    </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
                       {new Date(t.createdAt).toLocaleDateString("pt-BR")}
                     </td>
