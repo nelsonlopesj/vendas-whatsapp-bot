@@ -218,8 +218,7 @@ A assinatura da EZFlow inclui o uso completo da plataforma: fluxos ilimitados de
 
 **Construção de fluxos personalizados** — se você quiser um fluxo sob medida, desenhado pela nossa equipe para o seu produto (mensagens, estratégia de venda, módulo de confiança, remarketing...), esse serviço é **cobrado à parte**, conforme a complexidade.
 
-Para contratar, tirar dúvidas ou pedir ajuda:
-**WhatsApp: (11) 95248-2267**
+Para contratar, tirar dúvidas ou pedir ajuda: o **atendimento direto por WhatsApp é exclusivo do plano Pro** — entre na sua conta (ezflow.com.br/login) para falar com a gente.
 
 ---
 
@@ -255,4 +254,4 @@ Para contratar, tirar dúvidas ou pedir ajuda:
 
 Vídeos curtos gravados pela nossa equipe para ajudar nas configurações e no dia a dia da plataforma — assista quando precisar. A lista é atualizada sempre que necessário, sem mudar nada na página.
 
-> ✨ **Precisa de algo mais detalhado ou avançado** — fluxos sob medida, estratégias de venda, configurações especiais? Fale direto com o Nelson: **(11) 95248-2267**
+> ✨ **Precisa de algo mais detalhado ou avançado** — fluxos sob medida, estratégias de venda, configurações especiais? O atendimento direto é **exclusivo do plano Pro** — entre na sua conta para falar com a gente.

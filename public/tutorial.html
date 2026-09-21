@@ -663,7 +663,7 @@
     <span class="tag">Serviços personalizados</span>
     <h2>Quer um fluxo sob medida?</h2>
     <p>A assinatura da EZFlow inclui o uso completo da plataforma: fluxos, templates gratuitos, PIX e suporte ao uso. Já a <b>construção de fluxos personalizados</b> — desenhados pela nossa equipe para o seu produto (mensagens, estratégia de venda, módulo de confiança, remarketing…) — é <b>cobrada à parte</b>, conforme a complexidade.</p>
-    <p>Para contratar, tirar dúvidas ou pedir ajuda: <b>WhatsApp: <a href="https://wa.me/5511952482267?text=Ol%C3%A1!%20Preciso%20de%20ajuda%20com%20a%20EZFlow." style="color:inherit">(11) 95248-2267</a></b></p>
+    <p id="servicesContact">Para contratar, tirar dúvidas ou pedir ajuda: <b>o atendimento direto por WhatsApp é exclusivo do plano Pro</b>. <a href="/login" style="color:inherit"><b>Entre na sua conta</b></a> (ou <a href="/register" style="color:inherit"><b>crie uma</b></a>) para falar com a gente.</p>
   </section>
 
   <section class="etapa">
@@ -702,8 +702,8 @@
     <p style="color:var(--muted);font-size:14.5px;margin:0 0 14px">Vídeos curtos gravados pela nossa equipe para ajudar nas configurações e no dia a dia da plataforma — assista quando precisar, na ordem que quiser.</p>
     <div class="videos-grid" id="videoGrid"></div>
     <p id="videoEmpty" style="display:none;color:var(--muted);font-size:14px;padding:14px 0">🎬 Novos vídeos em breve — volte mais tarde!</p>
-    <div class="tip" style="margin:16px 0 0">
-      ✨ Precisa de algo <b>mais detalhado ou avançado</b> — fluxos sob medida, estratégias de venda, configurações especiais? Fale direto com o Nelson: <b><a href="https://wa.me/5511952482267?text=Ol%C3%A1!%20Preciso%20de%20ajuda%20com%20a%20EZFlow." style="color:inherit">(11) 95248-2267</a></b>
+    <div class="tip" style="margin:16px 0 0" id="proTip">
+      ✨ Precisa de algo <b>mais detalhado ou avançado</b> — fluxos sob medida, estratégias de venda, configurações especiais? O atendimento direto é <b>exclusivo do plano Pro</b> — <a href="/login" style="color:inherit"><b>entre na sua conta</b></a> para falar com a gente.
     </div>
   </section>
 
@@ -717,6 +717,28 @@
   document.querySelectorAll("#checklist li").forEach(function (li) {
     li.addEventListener("click", function () { li.classList.toggle("done"); });
   });
+
+  // Contato direto (WhatsApp do suporte): exclusivo do plano Pro.
+  // O número NÃO fica nesta página pública — a API só devolve para quem
+  // está logado e tem assinatura Pro (mesma regra da aba Suporte).
+  fetch("/api/tutorial/support-contact")
+    .then(function (r) { if (!r.ok) throw new Error("sem sessão"); return r.json(); })
+    .then(function (data) {
+      if (!data || data.pro !== true || !data.waLink) return;
+      var wa = '<a href="' + data.waLink + '" style="color:inherit"><b>' +
+        (data.waLabel || "WhatsApp") + "</b></a>";
+      var services = document.getElementById("servicesContact");
+      if (services) {
+        services.innerHTML = "Para contratar, tirar dúvidas ou pedir ajuda: <b>WhatsApp: " + wa + "</b>";
+      }
+      var tip = document.getElementById("proTip");
+      if (tip) {
+        tip.innerHTML = "✨ Precisa de algo <b>mais detalhado ou avançado</b> — fluxos sob medida, estratégias de venda, configurações especiais? Fale direto com o Nelson: <b>" + wa + "</b>";
+      }
+    })
+    .catch(function (err) {
+      console.error("tutorial support contact:", err);
+    });
 
   // Vídeos: lista dinâmica vinda da API (gerenciada pelo admin master —
   // ezflow.com.br/dashboard/admin/tutorial-videos)
