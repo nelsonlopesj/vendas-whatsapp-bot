@@ -142,9 +142,11 @@ interface FlowStep {
 
 interface FlowEditorProps {
   flowId?: string;
+  /** Owner (suporte): editar fluxo de OUTRO tenant — repassado às APIs via ?tenantId= */
+  tenantId?: string;
 }
 
-export function FlowEditor({ flowId }: FlowEditorProps) {
+export function FlowEditor({ flowId, tenantId }: FlowEditorProps) {
   const router = useRouter();
   const [flowName, setFlowName] = useState("Novo Fluxo");
   const [triggerKeyword, setTriggerKeyword] = useState("");
@@ -183,7 +185,7 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
   // Carregar fluxo existente ao editar
   useEffect(() => {
     if (!flowId) return;
-    fetch(`/api/flows/${flowId}`)
+    fetch(`/api/flows/${flowId}${tenantId ? `?tenantId=${tenantId}` : ""}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.flow) {
@@ -391,7 +393,8 @@ export function FlowEditor({ flowId }: FlowEditorProps) {
     setMessage("");
 
     const method = flowId ? "PUT" : "POST";
-    const url = flowId ? `/api/flows/${flowId}` : "/api/flows";
+    const baseUrl = flowId ? `/api/flows/${flowId}` : "/api/flows";
+    const url = tenantId ? `${baseUrl}?tenantId=${tenantId}` : baseUrl;
 
     const res = await fetch(url, {
       method,

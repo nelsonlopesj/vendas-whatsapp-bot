@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { resolveTenantId } from "@/lib/tenant-scope";
 
 // Listar fluxos
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  const tenantId = (session?.user as any)?.tenantId;
+  // Owner pode listar fluxos de outro tenant via ?tenantId= (Admin → Clientes)
+  const tenantId = await resolveTenantId(
+    session,
+    req.nextUrl.searchParams.get("tenantId")
+  );
   if (!tenantId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
@@ -35,17 +40,22 @@ export async function GET(req: NextRequest) {
 // Criar fluxo
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
-  const tenantId = (session?.user as any)?.tenantId;
+  const body = await req.json().catch(() => ({}));
+  // Owner pode criar fluxo para outro tenant via ?tenantId= ou body.tenantId
+  const requested =
+    req.nextUrl.searchParams.get("tenantId") || body.tenantId || null;
+  const tenantId = await resolveTenantId(session, requested);
   if (!tenantId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
 
   try {
-    const { name, triggerKeyword, triggerMode, hidden, steps } = await req.json();
+    const { name, triggerKeyword, triggerMode, hidden, steps } = body;
 
-    // Verificar assinatura
+    // Verificar assinatura — owner em modo suporte (outro tenant) pula o gate
     const { canCreateFlow } = await import("@/lib/subscription");
-    if (!(await canCreateFlow(tenantId))) {
+    const { isOwnerOverride } = await import("@/lib/tenant-scope");
+    if (!(await canCreateFlow(tenantId)) && !isOwnerOverride(session, requested, tenantId)) {
       return NextResponse.json(
         { error: "Trial expirado ou limite de fluxos atingido. Assine para continuar." },
         { status: 402 }

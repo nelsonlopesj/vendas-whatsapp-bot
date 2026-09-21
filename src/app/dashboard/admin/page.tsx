@@ -143,7 +143,7 @@ export default async function AdminPage() {
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell">{t._count.sales}</td>
                     <td className="px-4 py-3 hidden lg:table-cell">
-                      <FlowsModal tenantName={t.name} flows={flowsByTenant[t.id] || []} />
+                      <FlowsModal tenantId={t.id} tenantName={t.name} flows={flowsByTenant[t.id] || []} />
                     </td>
                     <td className="px-4 py-3 text-xs text-muted-foreground">
                       {new Date(t.createdAt).toLocaleDateString("pt-BR")}

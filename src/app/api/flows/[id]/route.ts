@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { resolveTenantId } from "@/lib/tenant-scope";
 
 // Buscar fluxo por ID
 export async function GET(
@@ -9,7 +10,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  const tenantId = (session?.user as any)?.tenantId;
+  // Owner pode acessar fluxo de outro tenant via ?tenantId= (Admin → Clientes)
+  const tenantId = await resolveTenantId(
+    session,
+    req.nextUrl.searchParams.get("tenantId")
+  );
   if (!tenantId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
@@ -40,7 +45,10 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  const tenantId = (session?.user as any)?.tenantId;
+  const tenantId = await resolveTenantId(
+    session,
+    req.nextUrl.searchParams.get("tenantId")
+  );
   if (!tenantId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
@@ -171,7 +179,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions);
-  const tenantId = (session?.user as any)?.tenantId;
+  const tenantId = await resolveTenantId(
+    session,
+    req.nextUrl.searchParams.get("tenantId")
+  );
   if (!tenantId) {
     return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
   }
