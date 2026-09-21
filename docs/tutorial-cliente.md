@@ -53,14 +53,6 @@ Na prática, funciona assim:
 
 ---
 
-## 🎬 Vídeos passo a passo
-
-Prefere assistir? Cada configuração tem um vídeo curto — assista só o que precisar. A lista de vídeos é atualizada pela equipe sempre que necessário, sem mudar nada na página.
-
-> ✨ **Precisa de algo mais detalhado ou avançado** — fluxos sob medida, estratégias de venda, configurações especiais? Fale direto com o Nelson: **(11) 95248-2267**
-
----
-
 ## Etapa 2 — Conectar seu WhatsApp
 
 Este passo faz o robô "morar" dentro do seu WhatsApp. Leva 30 segundos.
@@ -256,3 +248,11 @@ Para contratar, tirar dúvidas ou pedir ajuda:
 - [ ] Fluxo ligado ao produto e **ativo**
 - [ ] Teste completo feito (mensagem → PIX → entrega)
 - [ ] Anúncio com a palavra-chave no ar 🚀
+
+---
+
+## 🎬 Biblioteca de vídeos
+
+Vídeos curtos gravados pela nossa equipe para ajudar nas configurações e no dia a dia da plataforma — assista quando precisar. A lista é atualizada sempre que necessário, sem mudar nada na página.
+
+> ✨ **Precisa de algo mais detalhado ou avançado** — fluxos sob medida, estratégias de venda, configurações especiais? Fale direto com o Nelson: **(11) 95248-2267**

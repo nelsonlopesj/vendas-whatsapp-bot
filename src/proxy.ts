@@ -16,5 +16,8 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|uploads).*)"],
+  // /api/upload fica FORA do proxy: com proxy o Next amortece o corpo da
+  // requisição (default 10MB — proxyClientMaxBodySize) e uploads grandes
+  // chegavam truncados ("Unexpected end of form" no busboy)
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|uploads|api/upload).*)"],
 };

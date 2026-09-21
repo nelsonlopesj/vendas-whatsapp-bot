@@ -510,15 +510,6 @@
     <p class="demo-note">É isso que um <b>fluxo</b> faz, do começo ao fim — e é você quem monta, sem escrever uma linha de código.</p>
   </section>
 
-  <section id="videos" style="margin:36px 0 8px">
-    <h2 class="demo-head">🎬 Vídeos passo a passo</h2>
-    <p style="color:var(--muted);font-size:14.5px;margin:0 0 14px">Prefere assistir? Cada configuração tem um vídeo curto — assista só o que precisar, na ordem que quiser.</p>
-    <div class="videos-grid" id="videoGrid"></div>
-    <div class="tip" style="margin:16px 0 0">
-      ✨ Precisa de algo <b>mais detalhado ou avançado</b> — fluxos sob medida, estratégias de venda, configurações especiais? Fale direto com o Nelson: <b><a href="https://wa.me/5511952482267?text=Ol%C3%A1!%20Preciso%20de%20ajuda%20com%20a%20EZFlow." style="color:inherit">(11) 95248-2267</a></b>
-    </div>
-  </section>
-
   <nav class="toc" aria-label="Sumário">
     <a href="#etapa-1">1 · Criar conta</a>
     <a href="#etapa-2">2 · Conectar WhatsApp</a>
@@ -528,6 +519,7 @@
     <a href="#etapa-6">6 · Ativar fluxo</a>
     <a href="#etapa-7">7 · Testar</a>
     <a href="#etapa-8">8 · Acompanhar vendas</a>
+    <a href="#videos">🎬 Vídeos</a>
   </nav>
 
   <section class="etapa" id="preparo">
@@ -705,6 +697,16 @@
     </div>
   </section>
 
+  <section id="videos" style="margin:36px 0 8px">
+    <h2 class="demo-head">🎬 Biblioteca de vídeos</h2>
+    <p style="color:var(--muted);font-size:14.5px;margin:0 0 14px">Vídeos curtos gravados pela nossa equipe para ajudar nas configurações e no dia a dia da plataforma — assista quando precisar, na ordem que quiser.</p>
+    <div class="videos-grid" id="videoGrid"></div>
+    <p id="videoEmpty" style="display:none;color:var(--muted);font-size:14px;padding:14px 0">🎬 Novos vídeos em breve — volte mais tarde!</p>
+    <div class="tip" style="margin:16px 0 0">
+      ✨ Precisa de algo <b>mais detalhado ou avançado</b> — fluxos sob medida, estratégias de venda, configurações especiais? Fale direto com o Nelson: <b><a href="https://wa.me/5511952482267?text=Ol%C3%A1!%20Preciso%20de%20ajuda%20com%20a%20EZFlow." style="color:inherit">(11) 95248-2267</a></b>
+    </div>
+  </section>
+
   <footer>
     <span><b>EZFlow</b> · Seu robô de vendas no WhatsApp</span>
     <span><a href="https://ezflow.com.br">ezflow.com.br</a> · 7 dias grátis</span>
@@ -722,15 +724,19 @@
     .then(function (r) { if (!r.ok) throw new Error("sem vídeos"); return r.json(); })
     .then(function (data) {
       var list = data.videos || [];
-      var section = document.getElementById("videos");
       var grid = document.getElementById("videoGrid");
-      if (!Array.isArray(list) || list.length === 0) { section.style.display = "none"; return; }
+      if (!grid) return;
+      if (!Array.isArray(list) || list.length === 0) {
+        var emptyMsg = document.getElementById("videoEmpty");
+        if (emptyMsg) emptyMsg.style.display = "block";
+        return;
+      }
       grid.innerHTML = "";
       list.forEach(function (v) {
-        if (!v || !v.file || !v.title) return;
+        if (!v || !v.fileUrl || !v.title) return;
         var card = document.createElement("div");
         card.className = "video-card";
-        var src = v.file.indexOf("/") === 0 ? v.file : "/uploads/" + v.file;
+        var src = v.fileUrl.indexOf("/") === 0 ? v.fileUrl : "/uploads/" + v.fileUrl;
         var video = document.createElement("video");
         video.controls = true;
         video.preload = "none";
@@ -742,9 +748,10 @@
         grid.appendChild(card);
       });
     })
-    .catch(function () {
-      var section = document.getElementById("videos");
-      if (section) section.style.display = "none";
+    .catch(function (err) {
+      console.error("tutorial videos:", err);
+      var emptyMsg = document.getElementById("videoEmpty");
+      if (emptyMsg) emptyMsg.style.display = "block";
     });
 </script>
 </body>
