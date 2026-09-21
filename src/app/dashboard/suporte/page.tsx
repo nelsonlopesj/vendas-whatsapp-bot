@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import Link from "next/link";
 import { BookOpen, MessageCircle, Lock, ExternalLink } from "lucide-react";
+import { StripeCheckoutButton } from "@/components/suporte/checkout-button";
 
 export default async function SuportePage() {
   const session = await getServerSession(authOptions);
@@ -84,12 +85,7 @@ export default async function SuportePage() {
                 exclusivo do plano <b>Pro</b>. No plano Pro você também tem
                 prioridade no suporte e acompanhamento personalizado.
               </p>
-              <Link
-                href="/api/stripe/portal"
-                className="inline-flex items-center gap-2 mt-3 px-4 py-2.5 rounded-lg border border-input text-sm font-medium hover:bg-secondary transition-colors"
-              >
-                Ver planos e assinatura
-              </Link>
+              <StripeCheckoutButton />
             </div>
           </div>
         </div>
