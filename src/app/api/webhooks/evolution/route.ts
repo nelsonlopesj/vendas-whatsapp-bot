@@ -18,7 +18,7 @@ setInterval(() => {
 }, 10000);
 
 // Lock por telefone: evita race condition que cria sessões duplicadas
-const processingLock = new Map<string, Promise<void>>();
+const processingLock = new Map<string, Promise<boolean>>();
 
 // Rate limit do menu de boas-vindas: 1 envio por telefone+tenant a cada 10 min
 const noMatchMenuAt = new Map<string, number>();
@@ -167,9 +167,20 @@ export async function POST(req: NextRequest) {
         console.log(`[WA-NOMATCH] ${phone}: "${message}" — nenhum fluxo`);
 
         // Menu de boas-vindas: mensagem sem keyword e sem sessão ativa
-        // recebe a lista de produtos do tenant (rate limit 10 min)
+        // recebe a lista de produtos do tenant (rate limit 10 min).
+        // Só envia quando a assinatura permite processar mensagens —
+        // sem isso, o menu convidaria a digitar palavras que nunca vão
+        // disparar nenhum fluxo.
         if (instance && tenants.length === 1) {
           const tenant = tenants[0];
+          const { checkSubscription } = await import("@/lib/subscription");
+          const sub = await checkSubscription(tenant.id);
+          if (!sub.allowed) {
+            console.log(
+              `[WA-MENU] skipped for tenant ${tenant.id?.slice(-8)} (subscription ${sub.status})`
+            );
+            return processed;
+          }
           const menuKey = `${tenant.id}:${phone}`;
           const lastMenu = noMatchMenuAt.get(menuKey) || 0;
           if (Date.now() - lastMenu > 10 * 60 * 1000) {
@@ -178,11 +189,18 @@ export async function POST(req: NextRequest) {
               const flows = await prisma.flow.findMany({
                 where: { tenantId: tenant.id, isActive: true, hidden: false },
                 orderBy: { createdAt: "asc" },
-                select: { name: true, triggerKeyword: true },
+                select: { name: true, triggerKeyword: true, triggerMode: true },
               });
               if (flows.length > 0) {
+                // Regex é detalhe técnico — nunca mostrar o padrão cru ao cliente
                 const items = flows
-                  .map((f) => `• ${f.name} — digite *${f.triggerKeyword}*`)
+                  .map((f) =>
+                    `• ${f.name} — ${
+                      f.triggerMode === "regex"
+                        ? "responda *oi* para começar"
+                        : `digite *${f.triggerKeyword}*`
+                    }`
+                  )
                   .join("\n");
                 const menuClient = new EvolutionClient({
                   baseUrl: WA_URL,

@@ -8,6 +8,7 @@ import { FunnelDashboard } from "./funnel-dashboard";
 import { FlowsModal } from "./flows-modal";
 import type { FlowSummary } from "./flows-modal";
 import { PhoneCell } from "./phone-cell";
+import { WaStatusCell } from "./wa-status";
 
 export const dynamic = "force-dynamic";
 
@@ -102,6 +103,7 @@ export default async function AdminPage() {
                 <th className="text-left px-4 py-3 font-medium">Cliente</th>
                 <th className="text-left px-4 py-3 font-medium hidden sm:table-cell">Email</th>
                 <th className="text-left px-4 py-3 font-medium hidden md:table-cell">WhatsApp</th>
+                <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">WA</th>
                 <th className="text-left px-4 py-3 font-medium">Plano</th>
                 <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">Vendas</th>
                 <th className="text-left px-4 py-3 font-medium hidden lg:table-cell">Fluxos</th>
@@ -126,6 +128,9 @@ export default async function AdminPage() {
                     <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">{t.users[0]?.email || "-"}</td>
                     <td className="px-4 py-3 hidden md:table-cell">
                       <PhoneCell tenantId={t.id} value={t.whatsappNumber} tenantName={t.name} />
+                    </td>
+                    <td className="px-4 py-3 hidden lg:table-cell">
+                      <WaStatusCell tenantId={t.id} />
                     </td>
                     <td className="px-4 py-3">
                       {isOwner ? (
