@@ -14,7 +14,11 @@ ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
 EXPOSE 3000
+# Healthcheck real: o Traefik/Coolify só roteia tráfego quando a rota
+# /api/health responde. start-period cobre a janela de boot (db push +
+# instrumentation) para não aparecer Bad Gateway durante o deploy.
+HEALTHCHECK --interval=15s --timeout=5s --start-period=120s --retries=3 CMD curl -fsS http://127.0.0.1:3000/api/health > /dev/null || exit 1
 # db push no boot: aplica colunas novas do schema automaticamente
 # (evita quebra de páginas quando o banco está atrasado em relação ao código)
 # Melhor-esforço: se falhar, loga em /tmp/dbpush.log e o app sobe mesmo assim
-CMD ["sh", "-c", "for i in 1 2 3 4 5 6 7 8 9 10; do echo \"[boot] db push tentativa $i\"; npx prisma db push --skip-generate --accept-data-loss >> /tmp/dbpush.log 2>&1 && break; sleep 5; done; tail -5 /tmp/dbpush.log; npm start"]
+CMD ["sh", "-c", "for i in 1 2 3 4 5; do echo \"[boot] db push tentativa $i\"; npx prisma db push --skip-generate --accept-data-loss >> /tmp/dbpush.log 2>&1 && break; sleep 3; done; tail -5 /tmp/dbpush.log; npm start"]
