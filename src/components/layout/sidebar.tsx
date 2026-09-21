@@ -16,6 +16,7 @@ import {
   Zap,
   Users,
   Film,
+  LifeBuoy,
 } from "lucide-react";
 import { useState } from "react";
 import { clsx } from "clsx";
@@ -40,6 +41,7 @@ const navItems = [
     section: "Configurações",
     items: [
       { href: "/dashboard/settings", label: "WhatsApp & PIX", icon: Settings },
+      { href: "/dashboard/suporte", label: "Suporte", icon: LifeBuoy },
     ],
   },
   {
