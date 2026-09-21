@@ -47,6 +47,14 @@ export async function POST(req: NextRequest) {
 
     console.log(`[WA-IN] ${phone}: "${message}" (${pushName || "?"}) instance=${instance || "?"}`);
 
+    // Robô não responde em conversas em grupo: números usados para outros
+    // fins (caso da vitrine) seriam atrapalhados por respostas automáticas
+    // em grupos da família/amigos.
+    if (phone.endsWith("@g.us")) {
+      console.log(`[WA-GROUP] ignored group message from ${phone}`);
+      return NextResponse.json({ success: true, ignored: true, reason: "group" });
+    }
+
     // Serializar processamento por telefone (evita sessões duplicadas)
     const previousLock = processingLock.get(phone);
     const processMessage = async () => {
